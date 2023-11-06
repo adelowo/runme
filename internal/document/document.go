@@ -12,7 +12,10 @@ import (
 
 	"github.com/stateful/runme/internal/document/constants"
 	"github.com/stateful/runme/internal/document/identity"
+	"github.com/stateful/runme/internal/renderer/cmark"
 )
+
+var DefaultRenderer = cmark.Render
 
 type Document struct {
 	astNode          ast.Node

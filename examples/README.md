@@ -47,6 +47,14 @@ echo ok
 exit 1
 ```
 
+### Piping
+
+Try it with `echo "Hello" | runme run cat-stdin`:
+
+```sh { name=cat-stdin interactive=false }
+cat -
+```
+
 ### Interactive Scripts
 
 ```sh { name=print-name }
@@ -60,7 +68,7 @@ echo "\nHi, $name!"
 It can also execute a snippet of JavaScript code:
 
 ```js { name=hello-js }
-console.log("Hello World!")
+console.log("Hello World!");
 ```
 
 ## Go
@@ -96,9 +104,11 @@ password = admin
 ```sh { name=a category=a }
 echo "Category A"
 ```
+
 ```sh { name=b category=a,b }
 echo "Category A,B"
 ```
+
 ```sh { name=c category=a,b,c }
 echo "Category A,B,C"
 ```

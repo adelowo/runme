@@ -248,6 +248,8 @@ func newCommand(cfg *commandConfig) (*command, error) {
 		tmpEnvDir:      tmpEnvDir,
 	}
 
+	cmd.logger.Debug("created the command", zap.Bool("tty", cfg.Tty))
+
 	if cfg.Tty {
 		var err error
 		cmd.pty, cmd.tty, err = pty.Open()

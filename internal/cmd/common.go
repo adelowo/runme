@@ -18,6 +18,7 @@ import (
 	"github.com/stateful/runme/internal/tui"
 	"github.com/stateful/runme/internal/tui/prompt"
 	"github.com/stateful/runme/pkg/project"
+	"go.uber.org/zap"
 	"golang.org/x/exp/slices"
 )
 
@@ -194,6 +195,15 @@ func setRunnerFlags(cmd *cobra.Command, serverAddr *string) func() ([]client.Run
 			panic("runme stack depth limit exceeded")
 		}
 
+		loggercfg := zap.NewDevelopmentConfig()
+		loggercfg.OutputPaths = []string{
+			"./runme.log",
+		}
+		logger, err := loggercfg.Build()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to build logger")
+		}
+
 		runOpts := []client.RunnerOption{
 			client.WithDir(dir),
 			client.WithSessionID(SessionID),
@@ -202,6 +212,7 @@ func setRunnerFlags(cmd *cobra.Command, serverAddr *string) func() ([]client.Run
 			client.WithInsecure(fInsecure),
 			client.WithEnableBackgroundProcesses(EnableBackgroundProcesses),
 			client.WithEnvs([]string{fmt.Sprintf("%s=%d", envStackDepth, stackDepth)}),
+			client.WithLogger(logger),
 		}
 
 		switch strings.ToLower(SessionStrategy) {
