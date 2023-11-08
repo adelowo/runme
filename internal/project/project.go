@@ -42,7 +42,7 @@ func WithRespectGitignore() ProjectOption {
 	}
 }
 
-func WithIgnoreFilePatterns(patterns []string) ProjectOption {
+func WithIgnoreFilePatterns(patterns ...string) ProjectOption {
 	return func(p *Project) {
 		p.ignoreFilePatterns = patterns
 	}
@@ -184,6 +184,20 @@ func (p *Project) Load(
 	case p.fs != nil:
 		// Dir-based project.
 		ignorePatterns := make([]gitignore.Pattern, 0, len(p.ignoreFilePatterns))
+
+		// It's allowed for a dir-based project to read
+		// .gitignore and interpret it.
+		if p.respectGitignore {
+			patterns, err := gitignore.ReadPatterns(p.fs, nil)
+			if err != nil {
+				eventc <- LoadEvent{
+					Type: LoadEventError,
+					Data: errors.WithStack(err),
+				}
+			}
+			ignorePatterns = append(ignorePatterns, patterns...)
+		}
+
 		for _, p := range p.ignoreFilePatterns {
 			ignorePatterns = append(ignorePatterns, gitignore.ParsePattern(p, nil))
 		}
@@ -263,7 +277,7 @@ func (p *Project) loadFromDirectory(
 	}
 
 	for _, file := range filesToSearchBlocks {
-		loadFromFile(ctx, eventc, file)
+		extractTasksFromFile(ctx, eventc, file)
 	}
 }
 
@@ -288,10 +302,10 @@ func (p *Project) loadFromFile(
 		return
 	}
 
-	loadFromFile(ctx, eventc, path)
+	extractTasksFromFile(ctx, eventc, path)
 }
 
-func loadFromFile(
+func extractTasksFromFile(
 	ctx context.Context,
 	eventc chan<- LoadEvent,
 	path string,

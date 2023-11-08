@@ -8,15 +8,15 @@ import (
 	"testing"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-playground/assert/v2"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewGitProject(t *testing.T) {
 	testdataDir := testdataDir()
-	gitProjectDir := filepath.Join(testdataDir, "git-project")
-	projectDir := filepath.Join(testdataDir, "dir-project")
 
 	t.Run("NotGitProject", func(t *testing.T) {
+		projectDir := filepath.Join(testdataDir, "dir-project")
 		_, err := NewGitProject(projectDir)
 		require.ErrorIs(t, err, git.ErrRepositoryNotExists)
 	})
@@ -28,6 +28,7 @@ func TestNewGitProject(t *testing.T) {
 	})
 
 	t.Run("ProperGitProject", func(t *testing.T) {
+		gitProjectDir := filepath.Join(testdataDir, "git-project")
 		_, err := NewGitProject(gitProjectDir)
 		require.NoError(t, err)
 	})
@@ -35,15 +36,16 @@ func TestNewGitProject(t *testing.T) {
 
 func TestNewDirProject(t *testing.T) {
 	testdataDir := testdataDir()
-	gitProjectDir := filepath.Join(testdataDir, "git-project")
-	projectDir := filepath.Join(testdataDir, "dir-project")
 
 	t.Run("ProperDirProject", func(t *testing.T) {
+		projectDir := filepath.Join(testdataDir, "dir-project")
 		_, err := NewDirProject(projectDir)
 		require.NoError(t, err)
 	})
 
 	t.Run("ProperGitProject", func(t *testing.T) {
+		// git-based project is also a dir-based project.
+		gitProjectDir := filepath.Join(testdataDir, "git-project")
 		_, err := NewDirProject(gitProjectDir)
 		require.NoError(t, err)
 	})
@@ -76,30 +78,261 @@ func TestProjectLoad(t *testing.T) {
 	gitProjectDir := filepath.Join(testdataDir, "git-project")
 
 	t.Run("GitProject", func(t *testing.T) {
-		p, err := NewGitProject(gitProjectDir, WithRespectGitignore())
+		p, err := NewGitProject(gitProjectDir)
 		require.NoError(t, err)
 
 		eventc := make(chan LoadEvent)
 
 		events := make([]LoadEvent, 0)
-		done := make(chan struct{})
+		doneReadingEvents := make(chan struct{})
 		go func() {
-			defer close(done)
+			defer close(doneReadingEvents)
 			for e := range eventc {
 				events = append(events, e)
 			}
 		}()
 
 		p.Load(context.Background(), eventc, false)
-		<-done
+		<-doneReadingEvents
 
-		require.NotEmpty(t, events)
-
-		expectedEvents := []LoadEvent{
-			{Type: LoadEventStartedWalk},
-			{Type: LoadEventFinishedWalk},
+		expectedEvents := []LoadEventType{
+			LoadEventStartedWalk,
+			LoadEventFoundDir,  // "."
+			LoadEventFoundFile, // "git-ignored.md"
+			LoadEventFoundFile, // "ignored.md"
+			LoadEventFoundFile, // "readme.md"
+			LoadEventFinishedWalk,
+			LoadEventStartedParsingDocument,  // "git-ignored.md"
+			LoadEventFinishedParsingDocument, // "git-ignored.md"
+			LoadEventFoundTask,
+			LoadEventStartedParsingDocument,  // "ignored.md"
+			LoadEventFinishedParsingDocument, // "ignored.md"
+			LoadEventFoundTask,
+			LoadEventStartedParsingDocument,  // "readme.md"
+			LoadEventFinishedParsingDocument, // "readme.md"
+			LoadEventFoundTask,
 		}
-		require.EqualValues(t, expectedEvents, events)
+		require.EqualValues(
+			t,
+			expectedEvents,
+			mapLoadEvents(events, func(le LoadEvent) LoadEventType { return le.Type }),
+		)
+		assert.Equal(
+			t,
+			LoadEvent{
+				Type: LoadEventFoundDir,
+				Data: gitProjectDir,
+			},
+			events[1],
+		)
+		assert.Equal(
+			t,
+			LoadEvent{
+				Type: LoadEventFoundFile,
+				Data: filepath.Join(gitProjectDir, "git-ignored.md"),
+			},
+			events[2],
+		)
+		assert.Equal(
+			t,
+			LoadEvent{
+				Type: LoadEventFoundFile,
+				Data: filepath.Join(gitProjectDir, "ignored.md"),
+			},
+			events[3],
+		)
+		assert.Equal(
+			t,
+			LoadEvent{
+				Type: LoadEventFoundFile,
+				Data: filepath.Join(gitProjectDir, "readme.md"),
+			},
+			events[4],
+		)
+		assert.Equal(
+			t,
+			filepath.Join(gitProjectDir, "git-ignored.md"),
+			dataFromLoadEvent[Task](events[8]).Filename,
+		)
+		assert.Equal(
+			t,
+			filepath.Join(gitProjectDir, "ignored.md"),
+			dataFromLoadEvent[Task](events[11]).Filename,
+		)
+		assert.Equal(
+			t,
+			filepath.Join(gitProjectDir, "readme.md"),
+			dataFromLoadEvent[Task](events[14]).Filename,
+		)
+	})
+
+	t.Run("GitProjectWithRespectGitignoreAndIgnorePatterns", func(t *testing.T) {
+		p, err := NewGitProject(
+			gitProjectDir,
+			WithRespectGitignore(),
+			WithIgnoreFilePatterns("ignored.md"),
+		)
+		require.NoError(t, err)
+
+		eventc := make(chan LoadEvent)
+
+		events := make([]LoadEvent, 0)
+		doneReadingEvents := make(chan struct{})
+		go func() {
+			defer close(doneReadingEvents)
+			for e := range eventc {
+				events = append(events, e)
+			}
+		}()
+
+		p.Load(context.Background(), eventc, false)
+		<-doneReadingEvents
+
+		expectedEvents := []LoadEventType{
+			LoadEventStartedWalk,
+			LoadEventFoundDir,  // "."
+			LoadEventFoundFile, // "readme.md"
+			LoadEventFinishedWalk,
+			LoadEventStartedParsingDocument,  // "readme.md"
+			LoadEventFinishedParsingDocument, // "readme.md"
+			LoadEventFoundTask,
+		}
+		require.EqualValues(
+			t,
+			expectedEvents,
+			mapLoadEvents(events, func(le LoadEvent) LoadEventType { return le.Type }),
+		)
+	})
+
+	projectDir := filepath.Join(testdataDir, "dir-project")
+
+	t.Run("DirProject", func(t *testing.T) {
+		p, err := NewDirProject(projectDir)
+		require.NoError(t, err)
+
+		eventc := make(chan LoadEvent)
+
+		events := make([]LoadEvent, 0)
+		doneReadingEvents := make(chan struct{})
+		go func() {
+			defer close(doneReadingEvents)
+			for e := range eventc {
+				events = append(events, e)
+			}
+		}()
+
+		p.Load(context.Background(), eventc, false)
+		<-doneReadingEvents
+
+		expectedEvents := []LoadEventType{
+			LoadEventStartedWalk,
+			LoadEventFoundDir,  // "."
+			LoadEventFoundFile, // "git-ignored.md"
+			LoadEventFoundFile, // "ignored.md"
+			LoadEventFoundFile, // "readme.md"
+			LoadEventFinishedWalk,
+			LoadEventStartedParsingDocument,  // "git-ignored.md"
+			LoadEventFinishedParsingDocument, // "git-ignored.md"
+			LoadEventFoundTask,
+			LoadEventStartedParsingDocument,  // "ignored.md"
+			LoadEventFinishedParsingDocument, // "ignored.md"
+			LoadEventFoundTask,
+			LoadEventStartedParsingDocument,  // "readme.md"
+			LoadEventFinishedParsingDocument, // "readme.md"
+			LoadEventFoundTask,
+		}
+		require.EqualValues(
+			t,
+			expectedEvents,
+			mapLoadEvents(events, func(le LoadEvent) LoadEventType { return le.Type }),
+		)
+	})
+
+	t.Run("DirProjectWithRespectGitignoreAndIgnorePatterns", func(t *testing.T) {
+		p, err := NewDirProject(
+			projectDir,
+			WithRespectGitignore(),
+			WithIgnoreFilePatterns("ignored.md"),
+		)
+		require.NoError(t, err)
+
+		eventc := make(chan LoadEvent)
+
+		events := make([]LoadEvent, 0)
+		doneReadingEvents := make(chan struct{})
+		go func() {
+			defer close(doneReadingEvents)
+			for e := range eventc {
+				events = append(events, e)
+			}
+		}()
+
+		p.Load(context.Background(), eventc, false)
+		<-doneReadingEvents
+
+		expectedEvents := []LoadEventType{
+			LoadEventStartedWalk,
+			LoadEventFoundDir,  // "."
+			LoadEventFoundFile, // "readme.md"
+			LoadEventFinishedWalk,
+			LoadEventStartedParsingDocument,  // "readme.md"
+			LoadEventFinishedParsingDocument, // "readme.md"
+			LoadEventFoundTask,
+		}
+		require.EqualValues(
+			t,
+			expectedEvents,
+			mapLoadEvents(events, func(le LoadEvent) LoadEventType { return le.Type }),
+		)
+	})
+
+	fileProject := filepath.Join(testdataDir, "file-project.md")
+
+	t.Run("FileProject", func(t *testing.T) {
+		p, err := NewFileProject(fileProject)
+		require.NoError(t, err)
+
+		eventc := make(chan LoadEvent)
+
+		events := make([]LoadEvent, 0)
+		doneReadingEvents := make(chan struct{})
+		go func() {
+			defer close(doneReadingEvents)
+			for e := range eventc {
+				events = append(events, e)
+			}
+		}()
+
+		p.Load(context.Background(), eventc, false)
+		<-doneReadingEvents
+
+		expectedEvents := []LoadEventType{
+			LoadEventStartedWalk,
+			LoadEventFoundFile, // "file-project.md"
+			LoadEventFinishedWalk,
+			LoadEventStartedParsingDocument,  // "file-project.md"
+			LoadEventFinishedParsingDocument, // "file-project.md"
+			LoadEventFoundTask,
+		}
+		require.EqualValues(
+			t,
+			expectedEvents,
+			mapLoadEvents(events, func(le LoadEvent) LoadEventType { return le.Type }),
+		)
+
+		assert.Equal(
+			t,
+			LoadEvent{
+				Type: LoadEventFoundFile,
+				Data: fileProject,
+			},
+			events[1],
+		)
+		assert.Equal(
+			t,
+			fileProject,
+			dataFromLoadEvent[Task](events[5]).Filename,
+		)
 	})
 }
 
@@ -110,4 +343,18 @@ func testdataDir() string {
 		filepath.Dir(b),
 		"testdata",
 	)
+}
+
+func mapLoadEvents[T any](events []LoadEvent, fn func(LoadEvent) T) []T {
+	result := make([]T, 0, len(events))
+
+	for _, e := range events {
+		result = append(result, fn(e))
+	}
+
+	return result
+}
+
+func dataFromLoadEvent[T any](e LoadEvent) T {
+	return e.Data.(T)
 }
