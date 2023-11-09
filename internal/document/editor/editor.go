@@ -7,43 +7,38 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/stateful/runme/internal/document"
-	"github.com/stateful/runme/internal/renderer/cmark"
 
 	"github.com/stateful/runme/internal/document/constants"
-	"github.com/stateful/runme/internal/document/identity"
 )
 
 const FrontmatterKey = "frontmatter"
 
-func Deserialize(data []byte, identityResolver *identity.IdentityResolver) (*Notebook, error) {
-	sections, err := document.ParseSections(data)
+func Deserialize(data []byte) (*Notebook, error) {
+	// Deserialize content to cells.
+	doc := document.New(data)
+	node, err := doc.Root()
 	if err != nil {
 		return nil, err
 	}
 
-	// Deserialize content to cells.
-	doc := document.New(sections.Content, cmark.Render, identityResolver)
-	node, _, err := doc.Parse()
+	frontmatter, err := doc.Frontmatter()
 	if err != nil {
 		return nil, err
 	}
 
 	notebook := &Notebook{
-		Cells:         toCells(node, data),
-		contentOffset: sections.ContentOffset,
+		Cells:       toCells(doc, node, data),
+		Frontmatter: frontmatter,
 	}
 
+	// TODO(adamb): this should be available from `doc`
 	finalLinesBreaks := document.CountFinalLineBreaks(data, document.DetectLineBreak(data))
 	notebook.Metadata = map[string]string{
 		PrefixAttributeName(InternalAttributePrefix, constants.FinalLineBreaksKey): fmt.Sprint(finalLinesBreaks),
 	}
 
-	f, info := document.ParseFrontmatterWithIdentity(string(sections.FrontMatter), identityResolver.DocumentEnabled())
-	notebook.parsedFrontmatter = &f
-	notebook.frontmatterParseInfo = &info
-
-	if rawfm := info.GetRaw(); rawfm != "" {
-		notebook.Metadata[PrefixAttributeName(InternalAttributePrefix, FrontmatterKey)] = rawfm
+	if raw, err := doc.RawFrontmatter(); err == nil && len(raw) > 0 {
+		notebook.Metadata[PrefixAttributeName(InternalAttributePrefix, FrontmatterKey)] = string(raw)
 	}
 
 	return notebook, nil

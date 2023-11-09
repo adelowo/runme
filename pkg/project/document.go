@@ -9,8 +9,6 @@ import (
 	"github.com/go-git/go-billy/v5/util"
 	"github.com/pkg/errors"
 	"github.com/stateful/runme/internal/document"
-	"github.com/stateful/runme/internal/document/identity"
-	"github.com/stateful/runme/internal/renderer/cmark"
 )
 
 func ReadMarkdownFile(filepath string, fs billy.Basic) ([]byte, error) {
@@ -51,19 +49,24 @@ func parseDocumentForCodeBlocks(filepath string, fs billy.Basic, doFrontmatter b
 
 	var fmtr *document.Frontmatter
 
-	if doFrontmatter {
-		sections, err := document.ParseSections(data)
-		if err != nil {
-			return nil, nil, err
-		}
+	// if doFrontmatter {
+	// sections, err := document.ParseSections(data)
+	// if err != nil {
+	// 	return nil, nil, err
+	// }
 
-		f, _ := document.ParseFrontmatter(string(sections.FrontMatter))
-		fmtr = &f
-	}
+	// f, _ := document.ParseFrontmatter(string(sections.FrontMatter))
+	// fmtr = &f
+	// }
 
+<<<<<<< HEAD
 	identityResolver := identity.NewResolver(identity.DefaultLifecycleIdentity)
 	doc := document.New(data, cmark.Render, identityResolver)
 	node, _, err := doc.Parse()
+=======
+	doc := document.New(data)
+	node, err := doc.Root()
+>>>>>>> 5bd71a3 (internal/document: clean up public API)
 	if err != nil {
 		return nil, nil, err
 	}

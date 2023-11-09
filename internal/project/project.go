@@ -349,8 +349,8 @@ func getCodeBlocksFromFile(path string) (document.CodeBlocks, error) {
 }
 
 func getCodeBlocks(data []byte) (document.CodeBlocks, error) {
-	d := document.New(data, document.DefaultRenderer)
-	node, _, err := d.Parse()
+	d := document.New(data)
+	node, err := d.Root()
 	if err != nil {
 		return nil, err
 	}

@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stateful/runme/internal/document/identity"
-	"github.com/stateful/runme/internal/renderer/cmark"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,15 +34,15 @@ echo 1
 `)
 
 func TestNode_String(t *testing.T) {
-	doc := New(testDataNested, cmark.Render, identityResolverNone)
-	node, _, err := doc.Parse()
+	doc := New(testDataNested)
+	node, err := doc.Root()
 	require.NoError(t, err)
 	assert.Equal(t, string(testDataNested), node.String())
 }
 
 func TestCollectCodeBlocks(t *testing.T) {
-	doc := New(testDataNested, cmark.Render, identityResolverNone)
-	node, _, err := doc.Parse()
+	doc := New(testDataNested)
+	node, err := doc.Root()
 	require.NoError(t, err)
 	codeBlocks := CollectCodeBlocks(node)
 	assert.Len(t, codeBlocks, 2)

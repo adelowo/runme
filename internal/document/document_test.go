@@ -35,8 +35,8 @@ First paragraph.
 2. Item 2
 3. Item 3
 `)
-	doc := New(data, cmark.Render, identityResolver)
-	node, _, err := doc.Parse()
+	doc := New(data)
+	node, err := doc.Root()
 	require.NoError(t, err)
 	assert.Len(t, node.children, 4)
 	assert.Len(t, node.children[0].children, 0)
@@ -87,8 +87,8 @@ console.log("hello world!")
 `,
 	))
 
-	doc := New(data, cmark.Render, identityResolver)
-	node, _, err := doc.Parse()
+	doc := New(data)
+	node, err := doc.Root()
 	require.NoError(t, err)
 
 	cells := CollectCodeBlocks(node)
@@ -101,8 +101,8 @@ func TestDocument_FinalLineBreaks(t *testing.T) {
 	data := []byte(`This will test final line breaks`)
 
 	t.Run("No breaks", func(t *testing.T) {
-		doc := New(data, cmark.Render, identityResolver)
-		_, astNode, err := doc.Parse()
+		doc := New(data)
+		astNode, err := doc.RootASTNode()
 		require.NoError(t, err)
 
 		actual, err := cmark.Render(astNode, data)
@@ -117,8 +117,8 @@ func TestDocument_FinalLineBreaks(t *testing.T) {
 
 	t.Run("1 LF", func(t *testing.T) {
 		withLineBreaks := append(data, bytes.Repeat([]byte{'\n'}, 1)...)
-		doc := New(withLineBreaks, cmark.Render, identityResolver)
-		_, astNode, err := doc.Parse()
+		doc := New(withLineBreaks)
+		astNode, err := doc.RootASTNode()
 		require.NoError(t, err)
 
 		actual, err := cmark.Render(astNode, withLineBreaks)
@@ -133,8 +133,8 @@ func TestDocument_FinalLineBreaks(t *testing.T) {
 
 	t.Run("1 CRLF", func(t *testing.T) {
 		withLineBreaks := append(data, bytes.Repeat([]byte{'\r', '\n'}, 1)...)
-		doc := New(withLineBreaks, cmark.Render, identityResolver)
-		_, astNode, err := doc.Parse()
+		doc := New(withLineBreaks)
+		astNode, err := doc.RootASTNode()
 		require.NoError(t, err)
 
 		actual, err := cmark.Render(astNode, withLineBreaks)
@@ -149,8 +149,8 @@ func TestDocument_FinalLineBreaks(t *testing.T) {
 
 	t.Run("7 LFs", func(t *testing.T) {
 		withLineBreaks := append(data, bytes.Repeat([]byte{'\n'}, 7)...)
-		doc := New(withLineBreaks, cmark.Render, identityResolver)
-		_, astNode, err := doc.Parse()
+		doc := New(withLineBreaks)
+		astNode, err := doc.RootASTNode()
 		require.NoError(t, err)
 
 		actual, err := cmark.Render(astNode, withLineBreaks)
