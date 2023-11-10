@@ -9,17 +9,17 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/pkg/errors"
-	"github.com/stateful/runme/internal/env"
-	runnerv1 "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v1"
-	"github.com/stateful/runme/internal/rbuffer"
-	ulid "github.com/stateful/runme/internal/ulid"
-	"github.com/stateful/runme/pkg/project"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+
+	runnerv1 "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v1"
+	"github.com/stateful/runme/internal/project"
+	"github.com/stateful/runme/internal/rbuffer"
+	ulid "github.com/stateful/runme/internal/ulid"
 )
 
 const (
@@ -78,7 +78,17 @@ func (r *runnerService) CreateSession(ctx context.Context, req *runnerv1.CreateS
 		return nil, err
 	}
 
-	sess, err := NewSession(req.Envs, proj, r.logger)
+	envs := make([]string, len(req.Envs))
+	copy(envs, req.Envs)
+
+	projEnvs, err := proj.LoadEnvs()
+	if err != nil {
+		return nil, err
+	}
+
+	envs = append(envs, projEnvs...)
+
+	sess, err := NewSession(envs, r.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -139,19 +149,15 @@ func (r *runnerService) findSession(id string) *Session {
 	return nil
 }
 
-func ConvertRunnerProject(runnerProj *runnerv1.Project) (project.Project, error) {
+func ConvertRunnerProject(runnerProj *runnerv1.Project) (*project.Project, error) {
 	if runnerProj == nil {
 		return nil, nil
 	}
 
-	proj, err := project.NewDirectoryProject(runnerProj.Root, false, true, true, []string{})
-	if err != nil {
-		return nil, err
-	}
-
-	proj.SetEnvLoadOrder(runnerProj.EnvLoadOrder)
-
-	return proj, nil
+	return project.NewDirProject(
+		runnerProj.Root,
+		project.WithEnvRelFilenames(runnerProj.EnvLoadOrder),
+	)
 }
 
 func (r *runnerService) Execute(srv runnerv1.RunnerService_ExecuteServer) error {
@@ -173,7 +179,7 @@ func (r *runnerService) Execute(srv runnerv1.RunnerService_ExecuteServer) error 
 	logger.Debug("received initial request", zap.Any("req", req))
 
 	createSession := func(envs []string) (*Session, error) {
-		return NewSession(envs, nil, r.logger)
+		return NewSession(envs, r.logger)
 	}
 
 	var stdoutMem []byte
@@ -249,7 +255,7 @@ func (r *runnerService) Execute(srv runnerv1.RunnerService_ExecuteServer) error 
 			return err
 		}
 
-		cfg.PreEnv = env.ConvertMapEnv(mapEnv)
+		cfg.PreEnv = mapEnv
 	}
 
 	logger.Debug("command config", zap.Any("cfg", cfg))

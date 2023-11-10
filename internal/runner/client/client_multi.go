@@ -11,7 +11,6 @@ import (
 
 	"github.com/stateful/runme/internal/document"
 	"github.com/stateful/runme/internal/runner"
-	"github.com/stateful/runme/pkg/project"
 )
 
 const stripAnsi = "[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
@@ -23,7 +22,7 @@ type MultiRunner struct {
 
 	StdoutPrefix string
 
-	PreRunMsg  func(blocks []project.FileCodeBlock, parallel bool) string
+	PreRunMsg  func(blocks []*document.CodeBlock, parallel bool) string
 	PostRunMsg func(block *document.CodeBlock, exitCode uint) string
 
 	PreRunOpts []RunnerOption
@@ -71,7 +70,7 @@ func (w *prefixWriter) Write(p []byte) (int, error) {
 	return n - extraBytes, err
 }
 
-func (m MultiRunner) RunBlocks(ctx context.Context, blocks []project.FileCodeBlock, parallel bool) error {
+func (m MultiRunner) RunBlocks(ctx context.Context, blocks []*document.CodeBlock, parallel bool) error {
 	if m.PreRunMsg != nil && parallel {
 		_, _ = m.Runner.getSettings().stdout.Write([]byte(
 			m.PreRunMsg(blocks, parallel),
@@ -93,7 +92,7 @@ func (m MultiRunner) RunBlocks(ctx context.Context, blocks []project.FileCodeBlo
 
 		if m.PreRunMsg != nil && !parallel {
 			_, _ = m.Runner.getSettings().stdout.Write([]byte(
-				m.PreRunMsg([]project.FileCodeBlock{block}, parallel),
+				m.PreRunMsg([]*document.CodeBlock{block}, parallel),
 			))
 		}
 
@@ -123,7 +122,7 @@ func (m MultiRunner) RunBlocks(ctx context.Context, blocks []project.FileCodeBlo
 			return err
 		}
 
-		run := func(block project.FileCodeBlock) error {
+		run := func(block *document.CodeBlock) error {
 			err := runnerClient.RunBlock(ctx, block)
 
 			code := uint(0)
@@ -148,9 +147,9 @@ func (m MultiRunner) RunBlocks(ctx context.Context, blocks []project.FileCodeBlo
 			}
 		} else {
 			wg.Add(1)
-			go func(fileBlock project.FileCodeBlock) {
+			go func(block *document.CodeBlock) {
 				defer wg.Done()
-				err := run(fileBlock)
+				err := run(block)
 				errChan <- err
 			}(fileBlock)
 		}

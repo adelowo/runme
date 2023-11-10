@@ -22,17 +22,17 @@ func tasksCmd() *cobra.Command {
 			}
 
 		generateBlocks:
-			loader, err := newProjectLoader(cmd)
+			loader, err := newTUIProjectLoader(cmd)
 			if err != nil {
 				return err
 			}
 
-			blocks, err := loader.LoadTasks(proj, fAllowUnknown, fAllowUnnamed, true)
+			blocks, err := loader.LoadTasks(proj, &loadTasksConfig{AllowUnknown: fAllowUnknown, AllowUnnamed: fAllowUnnamed})
 			if err != nil {
 				return err
 			}
 
-			block, err := lookupCodeBlockWithPrompt(cmd, args[0], blocks)
+			block, err := lookupTaskWithPrompt(cmd, args[0], blocks)
 			if err != nil {
 				if project.IsCodeBlockNotFoundError(err) && !fAllowUnnamed {
 					fAllowUnnamed = true
@@ -43,8 +43,8 @@ func tasksCmd() *cobra.Command {
 			}
 
 			tasksDef, err := tasks.GenerateFromShellCommand(
-				block.Block.Name(),
-				block.Block.Lines()[0],
+				block.CodeBlock.Name(),
+				block.CodeBlock.Lines()[0],
 				&tasks.ShellCommandOpts{
 					Cwd: fChdir,
 				},

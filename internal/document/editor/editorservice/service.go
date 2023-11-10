@@ -32,27 +32,39 @@ func (s *parserServiceServer) Deserialize(_ context.Context, req *parserv1.Deser
 
 	cells := make([]*parserv1.Cell, 0, len(notebook.Cells))
 	for _, cell := range notebook.Cells {
+		var tr *parserv1.TextRange
+
+		if cell.TextRange != nil {
+			tr = &parserv1.TextRange{
+				Start: uint32(cell.TextRange.Start),
+				End:   uint32(cell.TextRange.End),
+			}
+		}
+
 		cells = append(cells, &parserv1.Cell{
 			Kind:       parserv1.CellKind(cell.Kind),
 			Value:      cell.Value,
 			LanguageId: cell.LanguageID,
 			Metadata:   cell.Metadata,
-			TextRange: &parserv1.TextRange{
-				Start: uint32(cell.TextRange.Start),
-				End:   uint32(cell.TextRange.End),
-			},
+			TextRange:  tr,
 		})
+	}
+
+	var frontmatter *parserv1.Frontmatter
+
+	if notebook.Frontmatter != nil {
+		frontmatter = &parserv1.Frontmatter{
+			Shell:       notebook.Frontmatter.Shell,
+			Cwd:         notebook.Frontmatter.Cwd,
+			SkipPrompts: notebook.Frontmatter.SkipPrompts,
+		}
 	}
 
 	return &parserv1.DeserializeResponse{
 		Notebook: &parserv1.Notebook{
-			Cells:    cells,
-			Metadata: notebook.Metadata,
-			Frontmatter: &parserv1.Frontmatter{
-				Shell:       notebook.Frontmatter.Shell,
-				Cwd:         notebook.Frontmatter.Cwd,
-				SkipPrompts: notebook.Frontmatter.SkipPrompts,
-			},
+			Cells:       cells,
+			Metadata:    notebook.Metadata,
+			Frontmatter: frontmatter,
 		},
 	}, nil
 }

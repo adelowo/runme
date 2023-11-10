@@ -11,10 +11,10 @@ import (
 	"github.com/mgutz/ansi"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"github.com/stateful/runme/internal/project"
 	"github.com/stateful/runme/internal/runner"
 	"github.com/stateful/runme/internal/runner/client"
 	"github.com/stateful/runme/internal/version"
-	"github.com/stateful/runme/pkg/project"
 	"golang.org/x/exp/constraints"
 )
 
@@ -37,12 +37,12 @@ func tuiCmd() *cobra.Command {
 				return err
 			}
 
-			loader, err := newProjectLoader(cmd)
+			loader, err := newTUIProjectLoader(cmd)
 			if err != nil {
 				return err
 			}
 
-			blocks, err := loader.LoadTasks(proj, fAllowUnknown, fAllowUnnamed, false)
+			tasks, err := loader.LoadTasks(proj, &loadTasksConfig{AllowUnknown: fAllowUnknown, AllowUnnamed: fAllowUnnamed})
 			if err != nil {
 				return err
 			}
@@ -50,15 +50,17 @@ func tuiCmd() *cobra.Command {
 			defaultAllowUnnamed := fAllowUnnamed
 
 			if !defaultAllowUnnamed {
-				newBlocks := project.FilterCodeBlocks(blocks, fAllowUnknown, false)
-				if len(newBlocks) == 0 {
+				tasks := project.FilterTasks(tasks, func(t project.Task) (bool, bool) {
+					return !t.CodeBlock.IsUnnamed(), false
+				})
+				if len(tasks) == 0 {
 					defaultAllowUnnamed = true
 				}
 			}
 
-			blocks = sortBlocks(blocks)
+			tasks = sortTasks(tasks)
 
-			if len(blocks) == 0 {
+			if len(tasks) == 0 {
 				if fFileMode {
 					return errors.Errorf("no code blocks in %s", fFileName)
 				}
@@ -116,7 +118,7 @@ func tuiCmd() *cobra.Command {
 			}
 
 			model := tuiModel{
-				unfilteredBlocks: blocks,
+				unfilteredTasks: tasks,
 				header: fmt.Sprintf(
 					"%s %s\n\n",
 					ansi.Color("runme", "57+b"),
@@ -147,16 +149,16 @@ func tuiCmd() *cobra.Command {
 				model = newModel.(tuiModel)
 				result := model.result
 
-				if result.block == nil {
+				if result.task.IsEmpty() {
 					break
 				}
 
 				ctx, cancel := ctxWithSigCancel(cmd.Context())
 
-				runBlock := result.block.Clone()
+				runBlock := result.task.CodeBlock.Clone()
 
 				if !runBlock.GetFrontmatter().SkipPrompts {
-					err = promptEnvVars(cmd, sessionEnvs, runBlock)
+					err = promptEnvVars(cmd, sessionEnvs, result.task)
 					if err != nil {
 						return err
 					}
@@ -213,29 +215,29 @@ func tuiCmd() *cobra.Command {
 }
 
 type tuiModel struct {
-	unfilteredBlocks project.CodeBlocks
-	blocks           project.CodeBlocks
-	header           string
-	visibleEntries   int
-	expanded         map[int]struct{}
-	cursor           int
-	scroll           int
-	result           tuiResult
-	allowUnnamed     bool
-	allowUnknown     bool
+	unfilteredTasks project.Tasks
+	tasks           project.Tasks
+	header          string
+	visibleEntries  int
+	expanded        map[int]struct{}
+	cursor          int
+	scroll          int
+	result          tuiResult
+	allowUnnamed    bool
+	allowUnknown    bool
 }
 
 type tuiResult struct {
-	block *project.CodeBlock
-	exit  bool
+	task project.Task
+	exit bool
 }
 
 func (m *tuiModel) numBlocksShown() int {
-	return min(len(m.blocks), m.visibleEntries)
+	return min(len(m.tasks), m.visibleEntries)
 }
 
 func (m *tuiModel) maxScroll() int {
-	return len(m.blocks) - m.numBlocksShown()
+	return len(m.tasks) - m.numBlocksShown()
 }
 
 func (m *tuiModel) scrollBy(delta int) {
@@ -246,21 +248,35 @@ func (m *tuiModel) scrollBy(delta int) {
 }
 
 func (m *tuiModel) filterCodeBlocks() {
-	hasInitialized := m.blocks != nil
+	hasInitialized := m.tasks != nil
 
-	var oldSelection project.CodeBlock
+	var oldSelection project.Task
 	if hasInitialized {
-		oldSelection = m.blocks[m.cursor]
+		oldSelection = m.tasks[m.cursor]
 	}
 
-	m.blocks = project.FilterCodeBlocks(m.unfilteredBlocks, m.allowUnknown, m.allowUnnamed)
+	var filteredTasks project.Tasks
+
+	for _, task := range m.unfilteredTasks {
+		if !m.allowUnknown && task.CodeBlock.IsUnknown() {
+			continue
+		}
+
+		if !m.allowUnnamed && task.CodeBlock.IsUnnamed() {
+			continue
+		}
+
+		filteredTasks = append(filteredTasks, task)
+	}
+
+	m.tasks = filteredTasks
 
 	if !hasInitialized {
 		return
 	}
 
 	foundOldSelection := false
-	for i, block := range m.blocks {
+	for i, block := range m.tasks {
 		if block == oldSelection {
 			m.moveCursorTo(i)
 			foundOldSelection = true
@@ -269,8 +285,8 @@ func (m *tuiModel) filterCodeBlocks() {
 	}
 
 	if !foundOldSelection {
-		if m.cursor >= len(m.blocks) {
-			m.moveCursorTo(len(m.blocks) - 1)
+		if m.cursor >= len(m.tasks) {
+			m.moveCursorTo(len(m.tasks) - 1)
 		}
 	}
 }
@@ -282,7 +298,7 @@ func (m *tuiModel) moveCursorTo(newPos int) {
 func (m *tuiModel) moveCursor(delta int) {
 	m.cursor = clamp(
 		m.cursor+delta,
-		0, len(m.blocks)-1,
+		0, len(m.tasks)-1,
 	)
 
 	if m.cursor < m.scroll || m.cursor >= m.scroll+m.numBlocksShown() {
@@ -305,8 +321,8 @@ func (m tuiModel) View() string {
 	_, _ = s.WriteString(m.header)
 
 	for i := m.scroll; i < m.scroll+m.numBlocksShown(); i++ {
-		fileBlock := m.blocks[i]
-		block := fileBlock.Block
+		task := m.tasks[i]
+		block := task.CodeBlock
 
 		active := i == m.cursor
 		_, expanded := m.expanded[i]
@@ -325,7 +341,7 @@ func (m tuiModel) View() string {
 				name += " (unnamed)"
 			}
 
-			filename := ansi.Color(fileBlock.File, "white+d")
+			filename := ansi.Color(task.Filename, "white+d")
 
 			if active {
 				name = ansi.Color(name, "white+b")
@@ -373,7 +389,7 @@ func (m tuiModel) View() string {
 	{
 		help := strings.Join(
 			[]string{
-				fmt.Sprintf("%d/%d", m.cursor+1, len(m.blocks)),
+				fmt.Sprintf("%d/%d", m.cursor+1, len(m.tasks)),
 				"Choose ↑↓←→",
 				"Run [Enter]",
 				"Expand [Space]",
@@ -417,12 +433,12 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "y", "c":
-			command := strings.Join(m.blocks[m.cursor].Block.Lines(), "\n")
+			command := strings.Join(m.tasks[m.cursor].CodeBlock.Lines(), "\n")
 			_ = clipboard.WriteAll(command)
 
 		case "enter", "l":
 			m.result = tuiResult{
-				block: &m.blocks[m.cursor],
+				task: m.tasks[m.cursor],
 			}
 
 			return m, tea.Quit

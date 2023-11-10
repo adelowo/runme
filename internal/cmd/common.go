@@ -9,78 +9,84 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
-	"github.com/stateful/runme/internal/document"
 	runnerv1 "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v1"
 	"github.com/stateful/runme/internal/runner/client"
 	"github.com/stateful/runme/internal/tui"
 	"github.com/stateful/runme/internal/tui/prompt"
-	"github.com/stateful/runme/pkg/project"
+
+	// "github.com/stateful/runme/pkg/project"
+	"github.com/stateful/runme/internal/project"
 	"go.uber.org/zap"
 	"golang.org/x/exp/slices"
 )
 
 const envStackDepth = "__RUNME_STACK_DEPTH"
 
-func getProject() (proj project.Project, err error) {
+var (
+	_getProjectOnce       = sync.Once{}
+	_getProjectOnceResult = struct {
+		project *project.Project
+		err     error
+	}{}
+)
+
+func getProject() (*project.Project, error) {
+	_getProjectOnce.Do(func() {
+		_getProjectOnceResult.project, _getProjectOnceResult.err = getNewProject()
+	})
+	return _getProjectOnceResult.project, _getProjectOnceResult.err
+}
+
+func getNewProject() (*project.Project, error) {
 	if fFileMode {
-		proj = project.NewSingleFileProject(filepath.Join(fChdir, fFileName), fAllowUnknown, fAllowUnnamed)
-	} else {
-		projDir, findNearestRepo := fProject, false
-		if projDir == "" {
-			projDir, err = os.Getwd()
-			if err != nil {
-				return nil, err
-			}
+		return project.NewFileProject(filepath.Join(fChdir, fFileName))
+	}
 
-			findNearestRepo = true
-		}
+	projectDir, findRepoUpward := fProject, false
 
-		dirProj, err := project.NewDirectoryProject(projDir, findNearestRepo, fAllowUnknown, fAllowUnnamed, fProjectIgnorePatterns)
+	if projectDir == "" {
+		var err error
+
+		projectDir, err = os.Getwd()
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 
-		proj = dirProj
-
-		if fLoadEnv && fEnvOrder != nil {
-			dirProj.SetEnvLoadOrder(fEnvOrder)
-		}
-
-		dirProj.SetRespectGitignore(fRespectGitignore)
+		findRepoUpward = true
 	}
 
-	return
-}
+	var opts []project.ProjectOption
 
-func newProjectLoader(cmd *cobra.Command) (*project.ProjectLoader, error) {
-	fd := os.Stdout.Fd()
-
-	if int(fd) >= 0 {
-		loader := project.NewLoader(cmd.OutOrStdout(), cmd.InOrStdin(), isTerminal(fd))
-		return &loader, nil
+	if findRepoUpward {
+		opts = append(opts, project.WithFindRepoUpward())
 	}
 
-	return nil, fmt.Errorf("invalid file descriptor due to restricted environments, redirected standard output, system configuration issues, or testing/simulation setups")
-}
-
-func getCodeBlocks() (document.CodeBlocks, error) {
-	return project.GetCodeBlocks(
-		filepath.Join(fChdir, fFileName),
-		nil,
-	)
+	return project.NewGitProject(projectDir, opts...)
 }
 
 func validCmdNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	blocks, err := getCodeBlocks()
+	p, err := getProject()
 	if err != nil {
-		cmd.PrintErrf("failed to get parser: %s", err)
+		cmd.PrintErrf("failed to get project: %s", err)
 		return nil, cobra.ShellCompDirectiveError
 	}
 
-	names := blocks.Names()
+	explorer := project.NewExplorer(context.TODO(), p)
+
+	tasks, err := explorer.Tasks()
+	if err != nil {
+		cmd.PrintErrf("failed to get tasks: %s", err)
+		return nil, cobra.ShellCompDirectiveError
+	}
+
+	names := make([]string, 0, len(tasks))
+	for _, t := range tasks {
+		names = append(names, t.CodeBlock.Name())
+	}
 
 	var filtered []string
 	for _, name := range names {
@@ -236,7 +242,7 @@ const tlsFileMode = os.FileMode(int(0o700))
 
 var defaultTLSDir = filepath.Join(GetDefaultConfigHome(), "tls")
 
-func promptEnvVars(cmd *cobra.Command, envs []string, runBlocks ...project.FileCodeBlock) error {
+func promptEnvVars(cmd *cobra.Command, envs []string, tasks ...project.Task) error {
 	keys := make([]string, len(envs))
 
 	for i, line := range envs {
@@ -247,22 +253,26 @@ func promptEnvVars(cmd *cobra.Command, envs []string, runBlocks ...project.FileC
 		keys[i] = strings.SplitN(line, "=", 2)[0]
 	}
 
-	for _, block := range runBlocks {
-		if block.GetBlock().PromptEnv() {
-			varPrompts := getCommandExportExtractMatches(block.GetBlock().Lines())
-			for _, ev := range varPrompts {
-				if slices.Contains(keys, ev.Key) {
-					block.GetBlock().SetLine(ev.LineNumber, "")
+	for _, task := range tasks {
+		block := task.CodeBlock
 
-					continue
-				}
+		if !block.PromptEnv() {
+			continue
+		}
 
-				newVal, err := promptForEnvVar(cmd, ev)
-				block.GetBlock().SetLine(ev.LineNumber, replaceVarValue(ev, newVal))
+		varPrompts := getCommandExportExtractMatches(block.Lines())
+		for _, ev := range varPrompts {
+			if slices.Contains(keys, ev.Key) {
+				block.SetLine(ev.LineNumber, "")
 
-				if err != nil {
-					return err
-				}
+				continue
+			}
+
+			newVal, err := promptForEnvVar(cmd, ev)
+			block.SetLine(ev.LineNumber, replaceVarValue(ev, newVal))
+
+			if err != nil {
+				return err
 			}
 		}
 	}

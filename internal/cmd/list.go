@@ -12,8 +12,8 @@ import (
 	"github.com/cli/go-gh/pkg/tableprinter"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"github.com/stateful/runme/internal/project"
 	"github.com/stateful/runme/internal/shell"
-	"github.com/stateful/runme/pkg/project"
 )
 
 type row struct {
@@ -43,36 +43,36 @@ func listCmd() *cobra.Command {
 				return err
 			}
 
-			loader, err := newProjectLoader(cmd)
+			loader, err := newTUIProjectLoader(cmd)
 			if err != nil {
 				return err
 			}
 
-			allBlocks, err := loader.LoadTasks(proj, fAllowUnknown, fAllowUnnamed, true)
+			allTasks, err := loader.LoadTasks(proj, &loadTasksConfig{AllowUnknown: fAllowUnknown, AllowUnnamed: fAllowUnnamed})
 			if err != nil {
 				return err
 			}
 
-			blocks, err := allBlocks.LookupByID(search)
+			foundTasks, err := allTasks.LookupByID(search)
 			if err != nil {
 				return err
 			}
 
-			if len(blocks) <= 0 && !fAllowUnnamed {
+			if len(foundTasks) == 0 && !fAllowUnnamed {
 				return errors.Errorf("no named code blocks, consider adding flag --allow-unnamed")
 			}
 
-			blocks = sortBlocks(blocks)
+			foundTasks = sortTasks(foundTasks)
 
 			// TODO: this should be taken from cmd.
 			io := iostreams.System()
 			var rows []row
-			for _, fileBlock := range blocks {
-				block := fileBlock.Block
+			for _, task := range foundTasks {
+				block := task.CodeBlock
 				lines := block.Lines()
 				r := row{
 					Name:         block.Name(),
-					File:         fileBlock.File,
+					File:         task.Filename,
 					FirstCommand: shell.TryGetNonCommentLine(lines),
 					Description:  block.Intro(),
 					Named:        !block.IsUnnamed(),
@@ -128,30 +128,29 @@ func displayJSON(io *iostreams.IOStreams, rows []row) error {
 	return jsonpretty.Format(io.Out, bytes.NewReader(by), "  ", false)
 }
 
-// sort blocks in ascending nested order
-func sortBlocks(blocks []project.CodeBlock) (res []project.CodeBlock) {
-	blocksByFile := make(map[string][]project.CodeBlock, 0)
+func sortTasks(tasks project.Tasks) project.Tasks {
+	tasksByFile := make(map[string]project.Tasks)
 
 	files := make([]string, 0)
-	for _, fileBlock := range blocks {
-		if arr, ok := blocksByFile[fileBlock.File]; ok {
-			blocksByFile[fileBlock.File] = append(arr, fileBlock)
+	for _, task := range tasks {
+		if arr, ok := tasksByFile[task.Filename]; ok {
+			tasksByFile[task.Filename] = append(arr, task)
 			continue
 		}
 
-		blocksByFile[fileBlock.File] = []project.CodeBlock{fileBlock}
-		files = append(files, fileBlock.File)
+		tasksByFile[task.Filename] = project.Tasks{task}
+		files = append(files, task.Filename)
 	}
 
 	sort.SliceStable(files, func(i, j int) bool {
 		return getFileDepth(files[i]) < getFileDepth(files[j])
 	})
 
+	result := make(project.Tasks, 0, len(tasks))
 	for _, file := range files {
-		res = append(res, blocksByFile[file]...)
+		result = append(result, tasksByFile[file]...)
 	}
-
-	return
+	return result
 }
 
 func getFileDepth(fp string) int {

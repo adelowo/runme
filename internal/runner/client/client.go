@@ -4,13 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"path/filepath"
 
-	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/muesli/cancelreader"
+	"github.com/stateful/runme/internal/document"
 	runnerv1 "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v1"
+	"github.com/stateful/runme/internal/project"
 	"github.com/stateful/runme/internal/runner"
-	"github.com/stateful/runme/pkg/project"
 	"go.uber.org/zap"
 )
 
@@ -21,7 +20,7 @@ var ErrRunnerClientUnimplemented = fmt.Errorf("method unimplemented")
 type RunnerSettings struct {
 	session         *runner.Session
 	sessionID       string
-	project         project.Project
+	project         *project.Project
 	cleanupSession  bool
 	sessionStrategy runnerv1.SessionStrategy
 
@@ -49,8 +48,8 @@ func (rs *RunnerSettings) Clone() *RunnerSettings {
 }
 
 type Runner interface {
-	RunBlock(ctx context.Context, block project.FileCodeBlock) error
-	DryRunBlock(ctx context.Context, block project.FileCodeBlock, w io.Writer, opts ...RunnerOption) error
+	RunBlock(ctx context.Context, block *document.CodeBlock) error
+	DryRunBlock(ctx context.Context, block *document.CodeBlock, w io.Writer, opts ...RunnerOption) error
 	Cleanup(ctx context.Context) error
 
 	Clone() Runner
@@ -86,7 +85,7 @@ func WithSessionID(id string) RunnerOption {
 	})
 }
 
-func WithProject(proj project.Project) RunnerOption {
+func WithProject(proj *project.Project) RunnerOption {
 	return withSettings(func(rs *RunnerSettings) {
 		rs.project = proj
 	})
@@ -225,36 +224,4 @@ func WrapWithCancelReader() RunnerOption {
 	return WithStdinTransform(func(r io.Reader) (io.Reader, error) {
 		return cancelreader.NewReader(r)
 	})
-}
-
-func ResolveDirectory(parentDir string, fileBlock project.FileCodeBlock) string {
-	for _, dir := range []string{
-		filepath.Dir(fileBlock.GetFile()),
-		filepath.FromSlash(fileBlock.GetFrontmatter().Cwd),
-		filepath.FromSlash(fileBlock.GetBlock().Cwd()),
-	} {
-		newDir := resolveOrAbsolute(parentDir, dir)
-
-		if stat, err := osfs.Default.Stat(newDir); err == nil && stat.IsDir() {
-			parentDir = newDir
-		}
-	}
-
-	return parentDir
-}
-
-func resolveOrAbsolute(parent string, child string) string {
-	if child == "" {
-		return parent
-	}
-
-	if filepath.IsAbs(child) {
-		return child
-	}
-
-	if parent != "" {
-		return filepath.Join(parent, child)
-	}
-
-	return child
 }

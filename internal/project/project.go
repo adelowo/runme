@@ -12,6 +12,7 @@ import (
 	"github.com/go-git/go-billy/v5/util"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
+	"github.com/joho/godotenv"
 	"github.com/pkg/errors"
 	"github.com/stateful/runme/internal/document"
 )
@@ -48,22 +49,34 @@ func WithIgnoreFilePatterns(patterns ...string) ProjectOption {
 	}
 }
 
-func WithGitPlainOpenOptions(options *git.PlainOpenOptions) ProjectOption {
+func WithFindRepoUpward() ProjectOption {
 	return func(p *Project) {
-		p.plainOpenOptions = options
+		p.plainOpenOptions.DetectDotGit = true
+	}
+}
+
+func WithEnvRelFilenames(orderFilenames []string) ProjectOption {
+	return func(p *Project) {
+		p.envRelFilenames = orderFilenames
 	}
 }
 
 type Project struct {
-	// fs is used for git- or dir-based projects.
-	fs billy.Filesystem
 	// filePath is used for file-based projects.
 	filePath string
+
+	// fs is used for git- or dir-based projects.
+	fs billy.Filesystem
 
 	// Used when creating a git-based project.
 	repo             *git.Repository
 	plainOpenOptions *git.PlainOpenOptions
 	respectGitignore bool
+
+	// envRelFilenames contains an ordered list of file names,
+	// relative to git- or dir-based projects, from which envs
+	// should be loaded.
+	envRelFilenames []string
 
 	// Used when creating a git- or dir-based project.
 	ignoreFilePatterns []string
@@ -73,14 +86,12 @@ func NewGitProject(
 	dir string,
 	opts ...ProjectOption,
 ) (*Project, error) {
-	p := &Project{}
+	p := &Project{
+		plainOpenOptions: &git.PlainOpenOptions{},
+	}
 
 	for _, opt := range opts {
 		opt(p)
-	}
-
-	if p.plainOpenOptions == nil {
-		p.plainOpenOptions = &git.PlainOpenOptions{}
 	}
 
 	var err error
@@ -146,6 +157,56 @@ func NewFileProject(
 	p.filePath = path
 
 	return p, nil
+}
+
+func (p *Project) Root() string {
+	if p.filePath != "" {
+		return filepath.Dir(p.filePath)
+	}
+
+	if p.fs != nil {
+		return p.fs.Root()
+	}
+
+	panic("invariant: Project was not initialized properly")
+}
+
+func (p *Project) EnvRelFilenames() []string {
+	return p.envRelFilenames
+}
+
+func (p *Project) LoadEnvs() ([]string, error) {
+	if p.fs == nil {
+		return nil, nil
+	}
+
+	var envs []string
+
+	for _, envFile := range p.envRelFilenames {
+		bytes, err := util.ReadFile(p.fs, envFile)
+		if err != nil {
+			// TODO(adamb): log this error
+			var pathError *os.PathError
+			if !errors.As(err, &pathError) {
+				return nil, errors.WithStack(err)
+			}
+
+			continue
+		}
+
+		parsed, err := godotenv.UnmarshalBytes(bytes)
+		if err != nil {
+			// silently fail for now
+			// TODO(mxs): come up with better solution
+			continue
+		}
+
+		for k, v := range parsed {
+			envs = append(envs, k+"="+v)
+		}
+	}
+
+	return envs, nil
 }
 
 func (p *Project) Load(

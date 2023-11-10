@@ -55,6 +55,10 @@ func New(source []byte, identityResolver *identity.IdentityResolver) *Document {
 	}
 }
 
+func (d *Document) Content() []byte {
+	return d.content
+}
+
 func (d *Document) ContentOffset() int {
 	return d.contentOffset
 }
@@ -86,7 +90,7 @@ func (d *Document) parse() {
 			return
 		}
 
-		d.rootASTNode = d.parser.Parse(text.NewReader(d.source))
+		d.rootASTNode = d.parser.Parse(text.NewReader(d.content))
 
 		node := &Node{}
 		if err := d.buildBlocksTree(d.rootASTNode, node); err != nil {
@@ -211,8 +215,6 @@ func (d *Document) parseFrontmatterOnce() {
 				return
 			}
 		}
-
-		d.frontmatterErr = errors.WithStack(ErrFrontmatterNotFound)
 	})
 }
 
@@ -221,10 +223,11 @@ func (d *Document) buildBlocksTree(parent ast.Node, node *Node) error {
 		switch astNode.Kind() {
 		case ast.KindFencedCodeBlock:
 			block, err := newCodeBlock(
+				d,
 				astNode.(*ast.FencedCodeBlock),
 				d.identityResolver,
 				d.nameResolver,
-				d.source,
+				d.content,
 				d.renderer,
 			)
 			if err != nil {
@@ -232,7 +235,7 @@ func (d *Document) buildBlocksTree(parent ast.Node, node *Node) error {
 			}
 			node.add(block)
 		case ast.KindBlockquote, ast.KindList, ast.KindListItem:
-			block, err := newInnerBlock(astNode, d.source, d.renderer)
+			block, err := newInnerBlock(astNode, d.content, d.renderer)
 			if err != nil {
 				return errors.WithStack(err)
 			}
@@ -241,7 +244,7 @@ func (d *Document) buildBlocksTree(parent ast.Node, node *Node) error {
 				return err
 			}
 		default:
-			block, err := newMarkdownBlock(astNode, d.source, d.renderer)
+			block, err := newMarkdownBlock(astNode, d.content, d.renderer)
 			if err != nil {
 				return errors.WithStack(err)
 			}

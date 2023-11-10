@@ -22,17 +22,17 @@ func printCmd() *cobra.Command {
 			}
 
 		generateBlocks:
-			loader, err := newProjectLoader(cmd)
+			loader, err := newTUIProjectLoader(cmd)
 			if err != nil {
 				return err
 			}
 
-			blocks, err := loader.LoadTasks(proj, fAllowUnknown, fAllowUnnamed, true)
+			tasks, err := loader.LoadTasks(proj, &loadTasksConfig{AllowUnknown: fAllowUnknown, AllowUnnamed: fAllowUnnamed})
 			if err != nil {
 				return err
 			}
 
-			fileBlock, err := lookupCodeBlockWithPrompt(cmd, args[0], blocks)
+			task, err := lookupTaskWithPrompt(cmd, args[0], tasks)
 			if err != nil {
 				if project.IsCodeBlockNotFoundError(err) && !fAllowUnnamed {
 					fAllowUnnamed = true
@@ -42,7 +42,7 @@ func printCmd() *cobra.Command {
 				return err
 			}
 
-			block := fileBlock.Block
+			block := task.CodeBlock
 
 			w := bulkWriter{
 				Writer: cmd.OutOrStdout(),

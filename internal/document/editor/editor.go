@@ -27,16 +27,17 @@ func Deserialize(data []byte) (*Notebook, error) {
 	}
 
 	notebook := &Notebook{
-		Cells:       toCells(doc, node, data),
+		Cells:       toCells(doc, node, doc.Content()),
 		Frontmatter: frontmatter,
 	}
 
 	// TODO(adamb): this should be available from `doc`
-	finalLinesBreaks := document.CountFinalLineBreaks(data, document.DetectLineBreak(data))
+	finalLinesBreaks := document.CountFinalLineBreaks(doc.Content(), document.DetectLineBreak(data))
 	notebook.Metadata = map[string]string{
 		PrefixAttributeName(InternalAttributePrefix, constants.FinalLineBreaksKey): fmt.Sprint(finalLinesBreaks),
 	}
 
+	// Additionally, put raw frontmatter in notebook's metadata.
 	if raw, err := doc.RawFrontmatter(); err == nil && len(raw) > 0 {
 		notebook.Metadata[PrefixAttributeName(InternalAttributePrefix, FrontmatterKey)] = string(raw)
 	}
