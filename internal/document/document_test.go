@@ -95,21 +95,53 @@ First paragraph
 		assert.Equal(t, 20, doc.ContentOffset())
 	})
 
-	t.Run("MismatchedFormatDiscardError", func(t *testing.T) {
-		data := bytes.TrimSpace([]byte(`
+	t.Run("Format", func(t *testing.T) {
+		testCases := []struct {
+			Name string
+			Data []byte
+		}{
+			{
+				Name: "YAML",
+				Data: bytes.TrimSpace([]byte(`
 ---
-key: value
-{"shell": "/bin/sh", "cwd": }
+shell: fish
 ---
-`,
-		))
-		doc := New(data)
-		_, err := doc.Root()
-		require.NoError(t, err)
+				`,
+				)),
+			},
+			{
+				Name: "YAML",
+				Data: bytes.TrimSpace([]byte(`
+---
+{
+  shell: fish
+}
+---
+				`,
+				)),
+			},
+			{
+				Name: "TOML",
+				Data: bytes.TrimSpace([]byte(`
+---
+shell = "fish"
+---
+				`,
+				)),
+			},
+		}
 
-		frontmatter, err := doc.Frontmatter()
-		require.NoError(t, err)
-		assert.EqualValues(t, &Frontmatter{}, frontmatter)
+		for _, tc := range testCases {
+			t.Run(tc.Name, func(t *testing.T) {
+				doc := New(tc.Data)
+				_, err := doc.Root()
+				require.NoError(t, err)
+
+				frontmatter, err := doc.Frontmatter()
+				assert.NoError(t, err)
+				assert.EqualValues(t, &Frontmatter{Shell: "fish"}, frontmatter)
+			})
+		}
 	})
 
 	t.Run("InvalidFormat", func(t *testing.T) {

@@ -68,32 +68,6 @@ Second inner paragraph
 
 3. Item 3
 `)
-
-// 	testDataFrontmatterYAML = []byte(strings.TrimSpace(`
-// ---
-// shell: fish
-// ---
-
-// Test paragraph
-// `))
-
-// 	testDataFrontmatterJSON = []byte(strings.TrimSpace(`
-// ---
-// {
-// 	shell: fish
-// }
-// ---
-
-// Test paragraph
-// `))
-
-// 	testDataFrontmatterTOML = []byte(strings.TrimSpace(`
-// +++
-// shell = "fish"
-// +++
-
-// Test paragraph
-// `))
 )
 
 func Test_toCells_DataNested(t *testing.T) {
@@ -411,44 +385,3 @@ func Test_serializeFencedCodeAttributes(t *testing.T) {
 		assert.Equal(t, ` {"a":"a","b":"b","c":"c","name":"name"}`, buf.String())
 	})
 }
-
-// func Test_notebook_frontmatter(t *testing.T) {
-// 	type fmtrExample struct {
-// 		file   []byte
-// 		kind   string
-// 		getErr func(info *document.FrontmatterParseInfo) error
-// 	}
-
-// 	for _, ex := range []fmtrExample{
-// 		{
-// 			file:   testDataFrontmatterYAML,
-// 			kind:   "YAML",
-// 			getErr: func(info *document.FrontmatterParseInfo) error { return info.YAMLError() },
-// 		},
-// 		{
-// 			file:   testDataFrontmatterJSON,
-// 			kind:   "JSON",
-// 			getErr: func(info *document.FrontmatterParseInfo) error { return info.JSONError() },
-// 		},
-// 		{
-// 			file:   testDataFrontmatterTOML,
-// 			kind:   "TOML",
-// 			getErr: func(info *document.FrontmatterParseInfo) error { return info.TOMLError() },
-// 		},
-// 	} {
-// 		file := ex.file
-// 		getErr := ex.getErr
-
-// 		t.Run(ex.kind, func(t *testing.T) {
-// 			t.Parallel()
-
-// 			notebook, err := Deserialize(file)
-// 			require.NoError(t, err)
-
-// 			fmtr, info := notebook.ParsedFrontmatter()
-// 			require.NoError(t, getErr(info))
-// 			require.NoError(t, info.Error())
-// 			assert.Equal(t, "fish", fmtr.Shell)
-// 		})
-// 	}
-// }
