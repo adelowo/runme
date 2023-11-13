@@ -1,6 +1,7 @@
 package document
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stateful/runme/internal/document/identity"
@@ -48,4 +49,29 @@ func TestCollectCodeBlocks(t *testing.T) {
 	assert.Len(t, codeBlocks, 2)
 	assert.Equal(t, "```sh {name=echo first= second=2}\n$ echo \"Hello, runme!\"\n```\n", string(codeBlocks[0].Value()))
 	assert.Equal(t, "```sh\necho 1\n```\n", string(codeBlocks[1].Value()))
+}
+
+func TestCodeBlock_Intro(t *testing.T) {
+	data := bytes.TrimSpace([]byte(`
+` + "```" + `js { name=echo }
+console.log("hello world!")
+` + "```" + `
+
+This is an intro
+
+` + "```" + `js { name=echo-2 }
+console.log("hello world!")
+` + "```" + `
+
+`,
+	))
+
+	doc := New(data)
+	node, err := doc.Root()
+	require.NoError(t, err)
+
+	blocks := CollectCodeBlocks(node)
+	require.Len(t, blocks, 2)
+	assert.Equal(t, "", blocks[0].Intro())
+	assert.Equal(t, "This is an intro", blocks[1].Intro())
 }

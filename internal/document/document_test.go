@@ -68,36 +68,71 @@ First paragraph.
 	assert.Equal(t, "Item 3\n", string(node.children[3].children[2].children[0].Item().Value()))
 }
 
-func TestDocument_BlockIntro(t *testing.T) {
-	data := bytes.TrimSpace([]byte(`
+func TestDocument_Frontmatter(t *testing.T) {
+	t.Run("Parse", func(t *testing.T) {
+		data := bytes.TrimSpace([]byte(`
 ---
 key: value
 ---
 
-` + "```" + `js { name=echo }
-console.log("hello world!")
-` + "```" + `
-
-This is an intro
-
-` + "```" + `js { name=echo-2 }
-console.log("hello world!")
-` + "```" + `
-
+First paragraph
 `,
-	))
+		))
 
-	doc := New(data)
-	node, err := doc.Root()
-	require.NoError(t, err)
+		doc := New(data)
+		_, err := doc.Root()
+		require.NoError(t, err)
 
-	cells := CollectCodeBlocks(node)
+		rawFrontmatter, err := doc.RawFrontmatter()
+		require.NoError(t, err)
+		assert.Equal(t, []byte("---\nkey: value\n---"), rawFrontmatter)
 
-	assert.Equal(t, "", cells[0].Intro())
-	assert.Equal(t, "This is an intro", cells[1].Intro())
+		frontmatter, err := doc.Frontmatter()
+		require.NoError(t, err)
+		assert.EqualValues(t, &Frontmatter{}, frontmatter)
+
+		assert.Equal(t, []byte("First paragraph"), doc.Content())
+		assert.Equal(t, 20, doc.ContentOffset())
+	})
+
+	t.Run("MismatchedFormatDiscardError", func(t *testing.T) {
+		data := bytes.TrimSpace([]byte(`
+---
+key: value
+{"shell": "/bin/sh", "cwd": }
+---
+`,
+		))
+		doc := New(data)
+		_, err := doc.Root()
+		require.NoError(t, err)
+
+		frontmatter, err := doc.Frontmatter()
+		require.NoError(t, err)
+		assert.EqualValues(t, &Frontmatter{}, frontmatter)
+	})
+
+	t.Run("InvalidFormat", func(t *testing.T) {
+		data := bytes.TrimSpace([]byte(`
+---
+{
+  "shell": "bin/sh",
+  "cwd": "/path/to/cwd
+}
+---
+`,
+		))
+		doc := New(data)
+		_, err := doc.Root()
+		require.NoError(t, err)
+
+		frontmatter, err := doc.Frontmatter()
+		assert.ErrorContains(t, err, "failed to parse frontmatter content: yaml: line 3: found unexpected end of stream")
+		assert.EqualValues(t, &Frontmatter{}, frontmatter)
+	})
 }
 
-func TestDocument_FinalLineBreaks(t *testing.T) {
+func TestDocument_TrailingLineBreaks(t *testing.T) {
 	data := []byte(`This will test final line breaks`)
 
 	t.Run("No breaks", func(t *testing.T) {
@@ -113,6 +148,7 @@ func TestDocument_FinalLineBreaks(t *testing.T) {
 			string(data),
 			string(actual),
 		)
+		assert.Equal(t, 0, doc.TrailingLineBreaksCount())
 	})
 
 	t.Run("1 LF", func(t *testing.T) {
@@ -129,6 +165,7 @@ func TestDocument_FinalLineBreaks(t *testing.T) {
 			string(withLineBreaks),
 			string(actual),
 		)
+		assert.Equal(t, 1, doc.TrailingLineBreaksCount())
 	})
 
 	t.Run("1 CRLF", func(t *testing.T) {
@@ -145,6 +182,7 @@ func TestDocument_FinalLineBreaks(t *testing.T) {
 			string(withLineBreaks),
 			string(actual),
 		)
+		assert.Equal(t, 1, doc.TrailingLineBreaksCount())
 	})
 
 	t.Run("7 LFs", func(t *testing.T) {
@@ -161,5 +199,6 @@ func TestDocument_FinalLineBreaks(t *testing.T) {
 			string(actual),
 			string(withLineBreaks),
 		)
+		assert.Equal(t, 7, doc.TrailingLineBreaksCount())
 	})
 }

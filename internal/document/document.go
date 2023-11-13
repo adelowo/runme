@@ -28,17 +28,20 @@ type Document struct {
 	parser           parser.Parser
 	renderer         Renderer
 
-	onceParse      sync.Once
-	parseErr       error
-	rootASTNode    ast.Node
-	rootNode       *Node
-	frontmatterRaw []byte
-	content        []byte // raw data behind frontmatter
-	contentOffset  int
+	onceParse               sync.Once
+	parseErr                error
+	onceSplitSource         sync.Once
+	splitSourceErr          error
+	rootASTNode             ast.Node
+	rootNode                *Node
+	frontmatterRaw          []byte
+	content                 []byte // raw data after frontmatter
+	contentOffset           int
+	trailingLineBreaksCount int
 
-	onceFrontmatter sync.Once
-	frontmatterErr  error
-	frontmatter     *Frontmatter
+	onceParseFrontmatter sync.Once
+	parseFrontmatterErr  error
+	frontmatter          *Frontmatter
 }
 
 func New(source []byte, identityResolver *identity.IdentityResolver) *Document {
@@ -49,9 +52,12 @@ func New(source []byte, identityResolver *identity.IdentityResolver) *Document {
 			namesCounter: map[string]int{},
 			cache:        map[interface{}]string{},
 		},
-		parser:    goldmark.DefaultParser(),
-		renderer:  DefaultRenderer,
-		onceParse: sync.Once{},
+		parser:               goldmark.DefaultParser(),
+		renderer:             DefaultRenderer,
+		onceParse:            sync.Once{},
+		onceSplitSource:      sync.Once{},
+		onceParseFrontmatter: sync.Once{},
+		contentOffset:        -1,
 	}
 }
 
@@ -63,33 +69,66 @@ func (d *Document) ContentOffset() int {
 	return d.contentOffset
 }
 
+func (d *Document) TrailingLineBreaksCount() int {
+	return d.trailingLineBreaksCount
+}
+
 func (d *Document) RootASTNode() (ast.Node, error) {
-	d.parse()
-
-	if d.parseErr != nil {
-		return nil, d.parseErr
+	if err := d.splitAndParse(); err != nil {
+		return nil, err
 	}
-
 	return d.rootASTNode, nil
 }
 
 func (d *Document) Root() (*Node, error) {
+	if err := d.splitAndParse(); err != nil {
+		return nil, err
+	}
+	return d.rootNode, nil
+}
+
+func (d *Document) splitAndParse() error {
+	d.splitSource()
+
+	if err := d.splitSourceErr; err != nil {
+		return err
+	}
+
 	d.parse()
 
 	if d.parseErr != nil {
-		return nil, d.parseErr
+		return d.parseErr
 	}
 
-	return d.rootNode, nil
+	return nil
+}
+
+func (d *Document) splitSource() {
+	d.onceSplitSource.Do(func() {
+		l := &itemParser{input: d.source}
+
+		runItemParser(l, parseInit)
+
+		for _, item := range l.items {
+			switch item.Type() {
+			case parsedItemFrontMatter:
+				d.frontmatterRaw = item.Value(d.source)
+			case parsedItemContent:
+				d.content = item.Value(d.source)
+				d.contentOffset = item.start
+			case parsedItemError:
+				// TODO(adamb): handle this error somehow
+				if !errors.Is(item.err, errParseFrontmatter) {
+					d.splitSourceErr = item.err
+					return
+				}
+			}
+		}
+	})
 }
 
 func (d *Document) parse() {
 	d.onceParse.Do(func() {
-		if err := d.splitSource(); err != nil {
-			d.parseErr = err
-			return
-		}
-
 		d.rootASTNode = d.parser.Parse(text.NewReader(d.content))
 
 		node := &Node{}
@@ -100,41 +139,17 @@ func (d *Document) parse() {
 
 		d.rootNode = node
 
+		d.trailingLineBreaksCount = countTrailingLineBreaks(d.source, detectLineBreak(d.source))
 		// Retain trailing new lines. This information must be stored in
 		// ast.Node's attributes because it's later used by internal/renderer/cmark.Render,
 		// which does not use anything else than ast.Node.
-		finalNewLines := CountFinalLineBreaks(d.source, DetectLineBreak(d.source))
-		d.rootASTNode.SetAttributeString(constants.FinalLineBreaksKey, finalNewLines)
+		d.rootASTNode.SetAttributeString(constants.FinalLineBreaksKey, d.trailingLineBreaksCount)
 	})
-}
-
-func (d *Document) splitSource() error {
-	l := &itemParser{input: d.source}
-
-	runItemParser(l, parseInit)
-
-	for _, item := range l.items {
-		switch item.Type() {
-		case parsedItemFrontMatter:
-			d.frontmatterRaw = item.Value(d.source)
-		case parsedItemContent:
-			d.content = item.Value(d.source)
-			d.contentOffset = item.start
-		case parsedItemError:
-			// TODO(adamb): handle this error somehow
-			if !errors.Is(item.err, errParseFrontmatter) {
-				return item.err
-			}
-		}
-	}
-
-	return nil
 }
 
 // TODO: use errors from stdlib
 var (
-	ErrFrontmatterInvalid  = errors.New("invalid frontmatter")
-	ErrFrontmatterNotFound = errors.New("not found frontmatter")
+	ErrFrontmatterInvalid = errors.New("invalid frontmatter")
 )
 
 type Frontmatter struct {
@@ -144,77 +159,83 @@ type Frontmatter struct {
 }
 
 func (f *Frontmatter) IsEmpty() bool {
-	return *f != Frontmatter{}
+	return *f == Frontmatter{}
 }
 
 func (d *Document) RawFrontmatter() ([]byte, error) {
-	d.parse()
+	d.splitSource()
 
-	if d.parseErr != nil {
-		return nil, d.parseErr
+	if d.splitSourceErr != nil {
+		return nil, d.splitSourceErr
 	}
 
 	return d.frontmatterRaw, nil
 }
 
 func (d *Document) Frontmatter() (f *Frontmatter, _ error) {
-	d.parse()
+	d.splitSource()
 
-	if d.parseErr != nil {
-		return f, d.parseErr
+	if d.splitSourceErr != nil {
+		return nil, d.splitSourceErr
 	}
 
 	d.parseFrontmatterOnce()
 
-	return d.frontmatter, d.frontmatterErr
+	return d.frontmatter, d.parseFrontmatterErr
 }
 
 func (d *Document) parseFrontmatterOnce() {
-	d.onceFrontmatter.Do(func() {
-		if len(d.frontmatterRaw) == 0 {
+	d.onceParseFrontmatter.Do(func() {
+		raw := d.frontmatterRaw
+
+		if len(raw) == 0 {
 			return
 		}
 
+		// We know that frontmatter is not empty,
+		// so d.frontmatter won't be nil ever.
+		// However, it may still be invalid and
+		// this detail will be in d.parseFrontmatterErr.
 		var f Frontmatter
 
-		raw := d.frontmatterRaw
 		lines := bytes.Split(raw, []byte{'\n'})
 
 		if len(lines) < 2 || !bytes.Equal(bytes.TrimSpace(lines[0]), bytes.TrimSpace(lines[len(lines)-1])) {
-			d.frontmatterErr = errors.WithStack(ErrFrontmatterInvalid)
+			d.parseFrontmatterErr = errors.WithStack(ErrFrontmatterInvalid)
 			return
 		}
 
 		raw = bytes.Join(lines[1:len(lines)-1], []byte{'\n'})
 
-		empty := Frontmatter{}
+		// TODO(adamb): discuss how to approach this in the most sensible way.
+		// It can always return to the initial idea of returning all errors,
+		// but the client will be left with the same problem.
+		parsers := []func([]byte, any) error{
+			yaml.Unmarshal,
+			json.Unmarshal,
+			toml.Unmarshal,
+		}
+		errorsCount := 0
 
-		{
-			yamlerr := yaml.Unmarshal(raw, &f)
-			if f != empty {
-				d.frontmatter = &f
-				d.frontmatterErr = errors.WithStack(yamlerr)
-				return
+		var firstError error
+
+		for _, parser := range parsers {
+			err := parser(raw, &f)
+			if err != nil {
+				errorsCount++
+
+				if firstError == nil {
+					firstError = errors.Wrap(err, "failed to parse frontmatter content")
+				}
 			}
 		}
 
-		{
-			jsonerr := json.Unmarshal(raw, &f)
-			if f != empty {
-				d.frontmatter = &f
-				d.frontmatterErr = errors.WithStack(jsonerr)
-				return
-			}
+		// If all parsers returned errors, select the first one.
+		if errorsCount == len(parsers) {
+			d.parseFrontmatterErr = firstError
 		}
 
-		{
-			tomlerr := toml.Unmarshal(raw, &f)
-			if f != empty {
-				d.frontmatter = &f
-				d.frontmatterErr = errors.WithStack(tomlerr)
-				return
-			}
-		}
+		d.frontmatter = &f
 	})
 }
 
@@ -274,7 +295,11 @@ func (r *nameResolver) Get(obj interface{}, name string) string {
 	return result
 }
 
-func CountFinalLineBreaks(source []byte, lineBreak []byte) int {
+func CountTrailingLineBreaks(source []byte, lineBreak []byte) int {
+	return countTrailingLineBreaks(source, lineBreak)
+}
+
+func countTrailingLineBreaks(source []byte, lineBreak []byte) int {
 	i := len(source) - len(lineBreak)
 	numBreaks := 0
 
@@ -287,6 +312,10 @@ func CountFinalLineBreaks(source []byte, lineBreak []byte) int {
 }
 
 func DetectLineBreak(source []byte) []byte {
+	return detectLineBreak(source)
+}
+
+func detectLineBreak(source []byte) []byte {
 	crlfCount := bytes.Count(source, []byte{'\r', '\n'})
 	lfCount := bytes.Count(source, []byte{'\n'})
 	if crlfCount == lfCount {

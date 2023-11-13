@@ -2,7 +2,6 @@ package editor
 
 import (
 	"bytes"
-	"fmt"
 	"strconv"
 
 	"github.com/pkg/errors"
@@ -29,15 +28,13 @@ func Deserialize(data []byte) (*Notebook, error) {
 	notebook := &Notebook{
 		Cells:       toCells(doc, node, doc.Content()),
 		Frontmatter: frontmatter,
-	}
-
-	// TODO(adamb): this should be available from `doc`
-	finalLinesBreaks := document.CountFinalLineBreaks(doc.Content(), document.DetectLineBreak(data))
-	notebook.Metadata = map[string]string{
-		PrefixAttributeName(InternalAttributePrefix, constants.FinalLineBreaksKey): fmt.Sprint(finalLinesBreaks),
+		Metadata: map[string]string{
+			PrefixAttributeName(InternalAttributePrefix, constants.FinalLineBreaksKey): strconv.Itoa(doc.TrailingLineBreaksCount()),
+		},
 	}
 
 	// Additionally, put raw frontmatter in notebook's metadata.
+	// TODO(adamb): handle the error.
 	if raw, err := doc.RawFrontmatter(); err == nil && len(raw) > 0 {
 		notebook.Metadata[PrefixAttributeName(InternalAttributePrefix, FrontmatterKey)] = string(raw)
 	}
@@ -48,6 +45,7 @@ func Deserialize(data []byte) (*Notebook, error) {
 func Serialize(notebook *Notebook) ([]byte, error) {
 	var result []byte
 
+	// Serialize frontmatter.
 	if intro, ok := notebook.Metadata[PrefixAttributeName(InternalAttributePrefix, FrontmatterKey)]; ok {
 		intro := []byte(intro)
 		lb := document.DetectLineBreak(intro)
@@ -57,16 +55,18 @@ func Serialize(notebook *Notebook) ([]byte, error) {
 		)
 	}
 
+	// Serialize cells.
 	result = append(result, serializeCells(notebook.Cells)...)
 
+	// Add trailing line breaks.
 	if lineBreaks, ok := notebook.Metadata[PrefixAttributeName(InternalAttributePrefix, constants.FinalLineBreaksKey)]; ok {
-		desired, err := strconv.ParseInt(lineBreaks, 10, 32)
+		desired, err := strconv.Atoi(lineBreaks)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 
 		lb := document.DetectLineBreak(result)
-		actual := document.CountFinalLineBreaks(result, lb)
+		actual := document.CountTrailingLineBreaks(result, lb)
 		delta := int(desired) - actual
 
 		if delta < 0 {
