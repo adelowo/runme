@@ -3,6 +3,7 @@ package document
 import (
 	"bytes"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"sync"
 
@@ -65,12 +66,21 @@ func (d *Document) Content() []byte {
 	return d.content
 }
 
+// ContentOffset returns the position of source from which
+// the actual content starts. If a value <0 is returned,
+// it means that the source is not parsed yet.
+//
+// Frontmatter is not a part of the content.
 func (d *Document) ContentOffset() int {
 	return d.contentOffset
 }
 
 func (d *Document) TrailingLineBreaksCount() int {
 	return d.trailingLineBreaksCount
+}
+
+func (d *Document) Parse() error {
+	return d.splitAndParse()
 }
 
 func (d *Document) RootASTNode() (ast.Node, error) {
@@ -147,15 +157,12 @@ func (d *Document) parse() {
 	})
 }
 
-// TODO: use errors from stdlib
-var (
-	ErrFrontmatterInvalid = errors.New("invalid frontmatter")
-)
+var ErrFrontmatterInvalid = stderrors.New("invalid frontmatter")
 
 type Frontmatter struct {
-	Shell       string
-	Cwd         string
-	SkipPrompts bool `yaml:"skipPrompts,omitempty"`
+	Shell       string `yaml:"shell"`
+	Cwd         string `yaml:"cwd"`
+	SkipPrompts bool   `yaml:"skipPrompts,omitempty"`
 }
 
 func (f *Frontmatter) IsEmpty() bool {
@@ -172,19 +179,23 @@ func (d *Document) RawFrontmatter() ([]byte, error) {
 	return d.frontmatterRaw, nil
 }
 
-func (d *Document) Frontmatter() (f *Frontmatter, _ error) {
+func (d *Document) Frontmatter() (*Frontmatter, error) {
 	d.splitSource()
 
 	if d.splitSourceErr != nil {
 		return nil, d.splitSourceErr
 	}
 
-	d.parseFrontmatterOnce()
+	d.parseFrontmatter()
 
-	return d.frontmatter, d.parseFrontmatterErr
+	if d.parseFrontmatterErr != nil {
+		return nil, d.parseFrontmatterErr
+	}
+
+	return d.frontmatter, nil
 }
 
-func (d *Document) parseFrontmatterOnce() {
+func (d *Document) parseFrontmatter() {
 	d.onceParseFrontmatter.Do(func() {
 		raw := d.frontmatterRaw
 

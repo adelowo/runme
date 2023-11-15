@@ -24,7 +24,6 @@ var (
 
 func TestMain(m *testing.M) {
 	ulid.MockGenerator(testMockID)
-
 	code := m.Run()
 	ulid.ResetGenerator()
 	os.Exit(code)

@@ -8,13 +8,14 @@ import (
 	"github.com/stateful/runme/internal/document"
 
 	"github.com/stateful/runme/internal/document/constants"
+	"github.com/stateful/runme/internal/document/identity"
 )
 
 const FrontmatterKey = "frontmatter"
 
-func Deserialize(data []byte) (*Notebook, error) {
+func Deserialize(data []byte, identityResolver *identity.IdentityResolver) (*Notebook, error) {
 	// Deserialize content to cells.
-	doc := document.New(data)
+	doc := document.New(data, identityResolver)
 	node, err := doc.Root()
 	if err != nil {
 		return nil, err
