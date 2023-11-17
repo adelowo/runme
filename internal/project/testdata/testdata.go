@@ -40,6 +40,8 @@ func CleanupGitProject() {
 // prepareGitProject copies .git.bkp from the ./testdata/git-project to .git in order to
 // make ./testdata/git-project a valid git project.
 func prepareGitProject() {
+	cleanupGitProject()
+
 	dir := GitProjectPath()
 
 	srcBkpFilesToDestFiles := map[string]string{
