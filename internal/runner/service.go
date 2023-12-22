@@ -14,6 +14,8 @@ import (
 	"github.com/stateful/runme/internal/rbuffer"
 	ulid "github.com/stateful/runme/internal/ulid"
 	"github.com/stateful/runme/pkg/project"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -167,7 +169,8 @@ func ConvertRunnerProject(runnerProj *runnerv1.Project) (project.Project, error)
 }
 
 func (r *runnerService) Execute(srv runnerv1.RunnerService_ExecuteServer) error {
-	logger := r.logger.With(zap.String("_id", ulid.GenerateID()))
+	runID := ulid.GenerateID()
+	logger := r.logger.With(zap.String("_id", runID))
 
 	logger.Info("running Execute in runnerService")
 
@@ -215,6 +218,13 @@ func (r *runnerService) Execute(srv runnerv1.RunnerService_ExecuteServer) error 
 			return err
 		}
 	}
+
+	var span trace.Span
+	_, span = sess.Tracer.Start(sess.Context, "Execute")
+	defer span.End()
+
+	ridKey := attribute.Key("RunID")
+	span.SetAttributes(ridKey.String(runID))
 
 	stdin, stdinWriter := io.Pipe()
 	stdout := rbuffer.NewRingBuffer(ringBufferSize)
@@ -485,6 +495,11 @@ func (r *runnerService) Execute(srv runnerv1.RunnerService_ExecuteServer) error 
 		if werr == nil {
 			werr = err
 		}
+	}
+
+	exitCodeKey := attribute.Key("ExitCode")
+	if finalExitCode != nil {
+		span.SetAttributes(exitCodeKey.Int(int(finalExitCode.GetValue())))
 	}
 
 	return werr
