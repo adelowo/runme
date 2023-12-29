@@ -28,6 +28,14 @@ type CommandOptions struct {
 	Logger *zap.Logger
 }
 
+// TODO(adamb): consider changing the strategy and have separate functions
+// for commands executed locally: NewLocal() and from remote: NewRemote().
+// For the local, it's very simple to reuse OS stdin, stderr, stdout.
+// For the remote, a PTY will be allocated and data will flow accordingly.
+// Sources:
+// - https://www.baeldung.com/linux/pty-vs-tty#:~:text=Software%20terminal%2C%20i.e.%2C%20virtual%20TeleTYpe,actual%20or%20CLI%2Demulated%20GUI
+// - For example, when you ssh in to a machine and run ls, the ls command is sending its output to a pseudo-terminal, the other side of which is attached to the SSH daemon.
+
 func CommandFromCodeBlock(
 	block *document.CodeBlock,
 	options *CommandOptions,
