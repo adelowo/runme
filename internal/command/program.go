@@ -30,14 +30,17 @@ func (e ErrInvalidProgram) Unwrap() error {
 	return e.inner
 }
 
-func programAndArgsFromCodeBlock(block *document.CodeBlock) (program string, args []string, err error) {
+func programPathAndArgsFromCodeBlock(block *document.CodeBlock) (program string, args []string, err error) {
 	interpreter := ""
 
 	lang := block.Language()
 
 	// If the language is a shell language, then infer the interpreter from the FrontMatter.
 	if isShellLanguage(lang) {
-		interpreter = shellFromFrontmatter(block)
+		fmtr, err := block.Document().Frontmatter()
+		if err == nil && fmtr != nil {
+			interpreter = fmtr.Shell
+		}
 	}
 
 	// Interpreter can be always overwritten at the block level.
@@ -79,6 +82,8 @@ func programAndArgsFromCodeBlock(block *document.CodeBlock) (program string, arg
 	return
 }
 
+// parseInterpreter handles cases when the interpreter is, for instance, "deno run".
+// Only the first word is a program name and the rest is arguments.
 func parseInterpreter(interpreter string) (program string, args []string) {
 	parts := strings.SplitN(interpreter, " ", 2)
 

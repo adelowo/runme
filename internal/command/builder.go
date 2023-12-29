@@ -1,10 +1,50 @@
 package command
 
 import (
+	"io"
+	"os"
 	"strings"
+	"syscall"
 
+	"github.com/pkg/errors"
 	"github.com/stateful/runme/internal/document"
+	"go.uber.org/zap"
 )
+
+type CommandOptions struct {
+	// TODO(adamb): figure out what this dir really is
+	ParentDir string
+
+	Env []string
+
+	// Tty, if true, allocates a pseudo-terminal, which is used
+	// as stdin, stdout, and stderr in exec.Cmd.
+	Tty bool
+
+	Stdin  io.ReadCloser
+	Stdout io.Writer
+	Stderr io.Writer
+
+	Logger *zap.Logger
+}
+
+func CommandFromCodeBlock(
+	block *document.CodeBlock,
+	options *CommandOptions,
+) (*Command, error) {
+	if options == nil {
+		options = &CommandOptions{
+			Logger: zap.NewNop(),
+		}
+	}
+
+	builder, err := newCommandBuilder(block, options)
+	if err != nil {
+		return nil, err
+	}
+
+	return builder.Build()
+}
 
 type commandBuilder interface {
 	Build() (*Command, error)
@@ -41,7 +81,7 @@ func (b *baseBuilder) Build() (*Command, error) {
 		return nil, err
 	}
 
-	program, args, err := programAndArgsFromCodeBlock(b.block)
+	programPath, args, err := programPathAndArgsFromCodeBlock(b.block)
 	if err != nil {
 		return nil, err
 	}
@@ -49,24 +89,48 @@ func (b *baseBuilder) Build() (*Command, error) {
 	preEnv := make([]string, 0, len(b.options.Env))
 	copy(preEnv, b.options.Env)
 
+	// Duplicate /dev/stdin.
+	newStdinFd, err := syscall.Dup(int(b.options.Stdin.(*os.File).Fd()))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to dup stdin")
+	}
+	syscall.CloseOnExec(newStdinFd)
+
+	if err := syscall.SetNonblock(newStdinFd, true); err != nil {
+		return nil, errors.Wrap(err, "failed to set new stdin fd in non-blocking mode")
+	}
+
+	stdin := os.NewFile(uintptr(newStdinFd), "")
+
 	cmd := &Command{
 		Name:   b.block.Name(),
-		Path:   program,
+		Path:   programPath,
 		Args:   args,
 		PreEnv: preEnv,
 		Dir:    dir,
-		Stdin:  b.options.Stdin,
+		Stdin:  stdin,
 		Stdout: b.options.Stdout,
 		Stderr: b.options.Stderr,
+		Logger: b.options.Logger.With(zap.String("name", b.block.Name())),
+	}
+
+	if b.options.Tty {
+		if err := cmd.setTty(); err != nil {
+			return nil, err
+		}
 	}
 
 	return cmd, nil
 }
 
 func (b *baseBuilder) dir() (string, error) {
-	return resolveDirectory(
-		resolveDirectoryFromCodeBlock(b.block, b.options.ParentDir),
-	)
+	dir := resolveDirFromCodeBlock(b.block, b.options.ParentDir)
+	if dir != "" {
+		return dir, nil
+	}
+
+	dir, err := os.Getwd()
+	return dir, errors.WithStack(err)
 }
 
 type inlineShellBuilder struct {
@@ -77,6 +141,10 @@ func (b *inlineShellBuilder) Build() (*Command, error) {
 	cmd, err := b.baseBuilder.Build()
 	if err != nil {
 		return nil, err
+	}
+
+	if b.options.Tty {
+		cmd.Args = append(cmd.Args, "-i")
 	}
 
 	cmd.Args = append(cmd.Args, "-c", b.prepareScript(cmd.Path))

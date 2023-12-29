@@ -4,34 +4,26 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/pkg/errors"
 	"github.com/stateful/runme/internal/document"
 )
 
-func resolveDirectory(blockDir string) (string, error) {
-	if blockDir != "" {
-		return blockDir, nil
-	}
-	directory, err := os.Getwd()
-	return directory, errors.WithStack(err)
-}
+func resolveDirFromCodeBlock(block *document.CodeBlock, parentDir string) string {
+	var dirs []string
 
-func resolveDirectoryFromCodeBlock(block *document.CodeBlock, parentDir string, otherDirs ...string) string {
-	dirs := []string{
-		block.Cwd(),
-	}
+	// The order is immportant starting from a frontmatter dir,
+	// next is the block dir, and finally all other dirs.
 
 	// TODO(adamb): consider handling this error or add a comment it can be skipped.
-	fmtr, _ := block.Document().Frontmatter()
-	if fmtr != nil && fmtr.Cwd != "" {
+	fmtr, err := block.Document().Frontmatter()
+	if err == nil && fmtr != nil && fmtr.Cwd != "" {
 		dirs = append(dirs, fmtr.Cwd)
 	}
 
-	dirs = append(dirs, otherDirs...)
+	dirs = append(dirs, block.Cwd())
 
 	for _, dir := range dirs {
 		dir := filepath.FromSlash(dir)
-		newDir := resolveOrAbsolute(parentDir, dir)
+		newDir := resolveDirUsingParentAndChild(parentDir, dir)
 		if stat, err := os.Stat(newDir); err == nil && stat.IsDir() {
 			parentDir = newDir
 		}
@@ -40,7 +32,8 @@ func resolveDirectoryFromCodeBlock(block *document.CodeBlock, parentDir string, 
 	return parentDir
 }
 
-func resolveOrAbsolute(parent string, child string) string {
+// TODO(adamb): figure out if it's needed and for which cases.
+func resolveDirUsingParentAndChild(parent, child string) string {
 	if child == "" {
 		return parent
 	}
