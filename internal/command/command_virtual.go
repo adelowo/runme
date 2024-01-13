@@ -15,11 +15,14 @@ import (
 )
 
 type virtualCommand struct {
-	cfg  *Config
-	opts *VirtualCommandOptions
+	Cfg  *Config
+	Opts *VirtualCommandOptions
 
 	// cmd is populated when the command is started.
 	cmd *exec.Cmd
+
+	// stdin is Opts.Stdin wrapped in ReadCloser.
+	stdin io.ReadCloser
 
 	pty *os.File
 	tty *os.File
@@ -32,10 +35,49 @@ type virtualCommand struct {
 	logger *zap.Logger
 }
 
+// readClose allows to wrap a io.Reader into io.ReadCloser.
+//
+// When Close() is called, the underlying read operation is ignored.
+// A disadvantage is that it may leak and hang indefinitely, or
+// the read data is lost. It's caller's responsibility to interrupt
+// the underlying reader when the virtualCommand exits.
+type readCloser struct {
+	r    io.Reader
+	done chan struct{}
+}
+
+func (r *readCloser) Read(p []byte) (n int, err error) {
+	readc := make(chan struct{})
+
+	go func() {
+		n, err = r.r.Read(p)
+		close(readc)
+	}()
+
+	select {
+	case <-readc:
+		return n, err
+	case <-r.done:
+		return 0, io.EOF
+	}
+}
+
+func (r *readCloser) Close() error {
+	close(r.done)
+	return nil
+}
+
 func newVirtualCommand(cfg *Config, opts *VirtualCommandOptions) *virtualCommand {
+	var stdin io.ReadCloser
+
+	if opts.Stdin != nil {
+		stdin = &readCloser{r: opts.Stdin, done: make(chan struct{})}
+	}
+
 	return &virtualCommand{
-		cfg:    cfg,
-		opts:   opts,
+		Cfg:    cfg,
+		Opts:   opts,
+		stdin:  stdin,
 		logger: opts.Logger.With(zap.String("name", cfg.Name)),
 	}
 }
@@ -65,36 +107,34 @@ func (c *virtualCommand) Start(ctx context.Context) error {
 
 	c.cmd = exec.CommandContext(
 		ctx,
-		c.cfg.ProgramPath,
-		c.cfg.Args...,
+		c.Cfg.ProgramPath,
+		c.Cfg.Args...,
 	)
-	c.cmd.Dir = c.cfg.Dir
-	c.cmd.Env = c.opts.Env
+	c.cmd.Dir = c.Cfg.Dir
+	c.cmd.Env = c.Opts.Env
 	c.cmd.Stdin = c.tty
 	c.cmd.Stdout = c.tty
 	c.cmd.Stderr = c.tty
 
 	setSysProcAttrCtty(c.cmd)
 
-	if !isNil(c.opts.Stdin) {
+	if !isNil(c.stdin) {
 		c.wg.Add(1)
 		go func() {
 			defer c.wg.Done()
-			n, err := io.Copy(c.pty, c.opts.Stdin)
+			n, err := io.Copy(c.pty, c.stdin)
+			c.logger.Info("copy from stdin to pty", zap.Error(err), zap.Int64("count", n))
 			if err != nil {
-				c.logger.Info("failed to copy from stdin to pty", zap.Error(err))
-				c.setErr(err)
-			} else {
-				c.logger.Debug("finished copying from stdin to pty", zap.Int64("count", n))
+				c.setErr(errors.WithStack(err))
 			}
 		}()
 	}
 
-	if !isNil(c.opts.Stdout) {
+	if !isNil(c.Opts.Stdout) {
 		c.wg.Add(1)
 		go func() {
 			defer c.wg.Done()
-			n, err := io.Copy(c.opts.Stdout, c.pty)
+			n, err := io.Copy(c.Opts.Stdout, c.pty)
 			if err != nil {
 				// Linux kernel returns EIO when attempting to read from
 				// a master pseudo-terminal which no longer has an open slave.
@@ -110,7 +150,7 @@ func (c *virtualCommand) Start(ctx context.Context) error {
 
 				c.logger.Info("failed to copy from pty to stdout", zap.Error(err))
 
-				c.setErr(err)
+				c.setErr(errors.WithStack(err))
 			} else {
 				c.logger.Debug("finished copying from pty to stdout", zap.Int64("count", n))
 			}
@@ -129,7 +169,11 @@ func (c *virtualCommand) Start(ctx context.Context) error {
 }
 
 func (c *virtualCommand) StopWithSignal(sig os.Signal) error {
+	c.logger.Info("stopping the virtual command with signal", zap.String("signal", sig.String()))
+
 	if c.pty != nil {
+		c.logger.Info("closing pty due to the signal")
+
 		if sig == os.Interrupt {
 			_, _ = c.pty.Write([]byte{0x3})
 		}
@@ -152,11 +196,12 @@ func (c *virtualCommand) StopWithSignal(sig os.Signal) error {
 
 func (c *virtualCommand) Wait() error {
 	c.logger.Info("waiting for the remote command to finish")
+
 	err := c.cmd.Wait()
+	c.setErr(err)
 	c.logger.Info("the remote command finished", zap.Error(err))
-	if err != nil {
-		return errors.WithStack(err)
-	}
+
+	_ = c.closeIOLoops()
 
 	c.wg.Wait()
 
@@ -165,6 +210,13 @@ func (c *virtualCommand) Wait() error {
 	c.mx.Unlock()
 
 	return errors.WithStack(err)
+}
+
+func (c *virtualCommand) closeIOLoops() (err error) {
+	if !isNil(c.stdin) {
+		err = c.stdin.Close()
+	}
+	return
 }
 
 func (c *virtualCommand) setErr(err error) {

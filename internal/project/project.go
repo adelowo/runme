@@ -114,6 +114,9 @@ func WithIdentityResolver(resolver *identity.IdentityResolver) ProjectOption {
 
 func WithEnvFilesReadOrder(order []string) ProjectOption {
 	return func(p *Project) {
+		if len(order) == 0 {
+			return
+		}
 		p.envFilesReadOrder = order
 	}
 }

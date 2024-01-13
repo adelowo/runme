@@ -8,7 +8,9 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -82,7 +84,16 @@ func getExecuteResult(
 	resultc <- result
 }
 
-func TestRunnerServiceServer(t *testing.T) {
+var testReadme = bytes.Join(
+	[][]byte{
+		[]byte("```sh {\"name\":\"basic\"}\necho -n test\n```"),
+		[]byte("```sh {\"name\":\"basic-sleep\"}\necho 1\nsleep 1\necho 2\n```"),
+		[]byte("```sh {\"name\":\"basic-input\"}\nread name\necho \"My name is $name\"\n```"),
+	},
+	[]byte("\n"),
+)
+
+func TestRunnerServiceServerExecute(t *testing.T) {
 	t.Parallel()
 
 	lis, stop := testStartRunnerServiceServer(t)
@@ -90,51 +101,94 @@ func TestRunnerServiceServer(t *testing.T) {
 	_, client := testCreateRunnerServiceClient(t, lis)
 
 	tmpDir := t.TempDir()
-	err := os.WriteFile(tmpDir+"/test.md", []byte("```sh {\"name\":\"echo\"}\necho -n test\n```"), 0o644)
+	readmeFile := filepath.Join(tmpDir, "README.md")
+
+	err := os.WriteFile(readmeFile, testReadme, 0o644)
 	require.NoError(t, err)
 
-	stream, err := client.Execute(context.Background())
-	require.NoError(t, err)
+	t.Run("Basic", func(t *testing.T) {
+		t.Parallel()
 
-	execResult := make(chan executeResult)
-	go getExecuteResult(stream, execResult)
+		stream, err := client.Execute(context.Background())
+		require.NoError(t, err)
 
-	err = stream.Send(&runnerv2alpha1.ExecuteRequest{
-		DocumentPath: tmpDir + "/test.md",
-		Block: &runnerv2alpha1.ExecuteRequest_BlockName{
-			BlockName: "echo",
-		},
+		execResult := make(chan executeResult)
+		go getExecuteResult(stream, execResult)
+
+		err = stream.Send(&runnerv2alpha1.ExecuteRequest{
+			Project: &runnerv2alpha1.Project{
+				Root: tmpDir,
+			},
+			Block: &runnerv2alpha1.ExecuteRequest_BlockName{
+				BlockName: "basic",
+			},
+		})
+		assert.NoError(t, err)
+
+		result := <-execResult
+
+		assert.NoError(t, result.Err)
+		assert.Equal(t, "test", string(result.Stdout))
+		assert.EqualValues(t, 0, result.ExitCode)
 	})
-	assert.NoError(t, err)
 
-	result := <-execResult
+	t.Run("BasicSleep", func(t *testing.T) {
+		t.Parallel()
 
-	assert.NoError(t, result.Err)
-	assert.Equal(t, "test", string(result.Stdout))
-	assert.EqualValues(t, 0, result.ExitCode)
-}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
 
-func Test_readLoop(t *testing.T) {
-	const dataSize = 10 * 1024 * 1024
+		stream, err := client.Execute(ctx)
+		require.NoError(t, err)
 
-	stdout := make([]byte, dataSize)
-	stderr := make([]byte, dataSize)
-	results := make(chan output)
-	stdoutN, stderrN := 0, 0
+		execResult := make(chan executeResult)
+		go getExecuteResult(stream, execResult)
 
-	done := make(chan struct{})
-	go func() {
-		for data := range results {
-			stdoutN += len(data.Stdout)
-			stderrN += len(data.Stderr)
-		}
-		close(done)
-	}()
+		err = stream.Send(&runnerv2alpha1.ExecuteRequest{
+			Project: &runnerv2alpha1.Project{
+				Root: tmpDir,
+			},
+			Block: &runnerv2alpha1.ExecuteRequest_BlockName{
+				BlockName: "basic-sleep",
+			},
+		})
+		assert.NoError(t, err)
 
-	err := readLoop(bytes.NewReader(stdout), bytes.NewReader(stderr), results)
-	assert.NoError(t, err)
-	close(results)
-	<-done
-	assert.Equal(t, dataSize, stdoutN)
-	assert.Equal(t, dataSize, stderrN)
+		result := <-execResult
+
+		assert.NoError(t, result.Err)
+		assert.Equal(t, "1\r\n2\r\n", string(result.Stdout))
+		assert.EqualValues(t, 0, result.ExitCode)
+	})
+
+	t.Run("BasicInput", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		stream, err := client.Execute(ctx)
+		require.NoError(t, err)
+
+		execResult := make(chan executeResult)
+		go getExecuteResult(stream, execResult)
+
+		err = stream.Send(&runnerv2alpha1.ExecuteRequest{
+			Project: &runnerv2alpha1.Project{
+				Root: tmpDir,
+			},
+			Block: &runnerv2alpha1.ExecuteRequest_BlockName{
+				BlockName: "basic-input",
+			},
+			Interactive: true,
+			InputData:   []byte("Frank\n"),
+		})
+		assert.NoError(t, err)
+
+		result := <-execResult
+
+		assert.NoError(t, result.Err)
+		assert.Equal(t, "My name is Frank\r\n", string(result.Stdout))
+		assert.EqualValues(t, 0, result.ExitCode)
+	})
 }
