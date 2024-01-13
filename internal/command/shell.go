@@ -30,39 +30,18 @@ func isShellLanguage(languageID string) bool {
 	}
 }
 
-// func resolveShellPath(customShell string) string {
-// 	if customShell != "" {
-// 		if path, err := exec.LookPath(customShell); err == nil {
-// 			return path
-// 		}
-// 	}
-// 	return systemShellPath()
-// }
+func prepareScript(block *document.CodeBlock, programPath string) string {
+	var buf strings.Builder
 
-// func systemShellPath() string {
-// 	shell, ok := os.LookupEnv("SHELL")
-// 	if !ok {
-// 		shell = "sh"
-// 	}
-// 	if path, err := exec.LookPath(shell); err == nil {
-// 		return path
-// 	}
-// 	return "/bin/sh"
-// }
+	_, _ = buf.WriteString(shellOptionsFromProgram(programPath) + ";")
 
-// func isShellProgram(path string) bool {
-// 	name := filepath.Base(path)
+	for _, cmd := range block.Lines() {
+		_, _ = buf.WriteString(cmd)
+		_, _ = buf.WriteRune(';')
+	}
 
-// 	for _, candidate := range []string{
-// 		"bash", "sh", "ksh", "zsh", "fish", "powershell", "pwsh", "cmd",
-// 	} {
-// 		if name == candidate {
-// 			return true
-// 		}
-// 	}
-
-// 	return false
-// }
+	return buf.String()
+}
 
 func shellOptionsFromProgram(programPath string) (res string) {
 	shell := shellFromProgramPath(programPath)
@@ -83,17 +62,4 @@ func shellOptionsFromProgram(programPath string) (res string) {
 func shellFromProgramPath(programPath string) string {
 	programFile := filepath.Base(programPath)
 	return programFile[:len(programFile)-len(filepath.Ext(programFile))]
-}
-
-func prepareScript(block *document.CodeBlock, programPath string) string {
-	var buf strings.Builder
-
-	_, _ = buf.WriteString(shellOptionsFromProgram(programPath) + ";")
-
-	for _, cmd := range block.Lines() {
-		_, _ = buf.WriteString(cmd)
-		_, _ = buf.WriteRune(';')
-	}
-
-	return buf.String()
 }

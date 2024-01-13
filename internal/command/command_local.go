@@ -12,7 +12,7 @@ import (
 
 type localCommand struct {
 	cfg  *Config
-	opts *LocalOptions
+	opts *NativeCommandOptions
 
 	// cmd is populated when the command is started.
 	cmd *exec.Cmd
@@ -20,7 +20,7 @@ type localCommand struct {
 	logger *zap.Logger
 }
 
-func newLocalCommand(cfg *Config, opts *LocalOptions) *localCommand {
+func newNativeCommand(cfg *Config, opts *NativeCommandOptions) *localCommand {
 	return &localCommand{
 		cfg:    cfg,
 		opts:   opts,
@@ -55,10 +55,10 @@ func (c *localCommand) Start(ctx context.Context) error {
 
 	c.cmd = exec.CommandContext(
 		ctx,
-		c.cfg.Path,
+		c.cfg.ProgramPath,
 		c.cfg.Args...,
 	)
-	c.cmd.Dir = resolveDir(c.opts.ParentDir, c.cfg.Dirs)
+	c.cmd.Dir = c.cfg.Dir
 	c.cmd.Env = c.opts.Env
 	c.cmd.Stdin = stdin
 	c.cmd.Stdout = c.opts.Stdout

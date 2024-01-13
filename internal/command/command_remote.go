@@ -13,9 +13,9 @@ import (
 	"go.uber.org/zap"
 )
 
-type remoteCommand struct {
+type virtualCommand struct {
 	cfg  *Config
-	opts *RemoteOptions
+	opts *VirtualCommandOptions
 
 	// cmd is populated when the command is started.
 	cmd *exec.Cmd
@@ -31,15 +31,15 @@ type remoteCommand struct {
 	logger *zap.Logger
 }
 
-func newRemoteCommand(cfg *Config, opts *RemoteOptions) *remoteCommand {
-	return &remoteCommand{
+func newVirtualCommand(cfg *Config, opts *VirtualCommandOptions) *virtualCommand {
+	return &virtualCommand{
 		cfg:    cfg,
 		opts:   opts,
 		logger: opts.Logger.With(zap.String("name", cfg.Name)),
 	}
 }
 
-func (c *remoteCommand) Start(ctx context.Context) error {
+func (c *virtualCommand) Start(ctx context.Context) error {
 	var err error
 
 	c.pty, c.tty, err = pty.Open()
@@ -53,10 +53,10 @@ func (c *remoteCommand) Start(ctx context.Context) error {
 
 	c.cmd = exec.CommandContext(
 		ctx,
-		c.cfg.Path,
+		c.cfg.ProgramPath,
 		c.cfg.Args...,
 	)
-	c.cmd.Dir = resolveDir(c.opts.ParentDir, c.cfg.Dirs)
+	c.cmd.Dir = c.cfg.Dir
 	c.cmd.Env = c.opts.Env
 	c.cmd.Stdin = c.tty
 	c.cmd.Stdout = c.tty
@@ -116,7 +116,7 @@ func (c *remoteCommand) Start(ctx context.Context) error {
 	return nil
 }
 
-func (c *remoteCommand) Wait() error {
+func (c *virtualCommand) Wait() error {
 	c.logger.Info("waiting for the remote command to finish")
 	err := c.cmd.Wait()
 	c.logger.Info("the remote command finished", zap.Error(err))
@@ -133,7 +133,7 @@ func (c *remoteCommand) Wait() error {
 	return errors.WithStack(err)
 }
 
-func (c *remoteCommand) setErr(err error) {
+func (c *virtualCommand) setErr(err error) {
 	if err == nil {
 		return
 	}

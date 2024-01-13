@@ -30,10 +30,10 @@ func TestNewLocal(t *testing.T) {
 
 		stdout := bytes.NewBuffer(nil)
 
-		localOptions := &LocalOptions{
+		localOptions := &NativeCommandOptions{
 			Stdout: stdout,
 		}
-		command, err := NewLocal(blocks[0], localOptions)
+		command, err := NewNative(blocks[0], localOptions)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -64,10 +64,10 @@ func TestNewRemote(t *testing.T) {
 
 		stdout := bytes.NewBuffer(nil)
 
-		remoteOptions := &RemoteOptions{
+		remoteOptions := &VirtualCommandOptions{
 			Stdout: stdout,
 		}
-		command, err := NewRemote(blocks[0], remoteOptions)
+		command, err := NewVirtual(blocks[0], remoteOptions)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -93,11 +93,11 @@ func TestNewRemote(t *testing.T) {
 		stdin := bytes.NewReader([]byte("Unit Test\n"))
 		stdout := bytes.NewBuffer(nil)
 
-		remoteOptions := &RemoteOptions{
+		remoteOptions := &VirtualCommandOptions{
 			Stdin:  stdin,
 			Stdout: stdout,
 		}
-		command, err := NewRemote(blocks[0], remoteOptions)
+		command, err := NewVirtual(blocks[0], remoteOptions)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)

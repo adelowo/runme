@@ -7,9 +7,9 @@ echo "$name"
 ```
 
 ```sh {"name": "print-interactive"}
-echo "Hello "
+echo "Give me your name: "
 read name
-echo "$name"
+echo "Hello, $name!"
 ```
 
 ```sh {"name":"python"}
