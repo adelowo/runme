@@ -3,13 +3,17 @@ package command
 import (
 	"context"
 	"io"
+	"os"
 
 	"github.com/stateful/runme/internal/document"
 	"go.uber.org/zap"
 )
 
 type Command interface {
+	IsRunning() bool
+	PID() int
 	Start(context.Context) error
+	StopWithSignal(os.Signal) error
 	Wait() error
 }
 

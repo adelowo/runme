@@ -28,6 +28,17 @@ func newNativeCommand(cfg *Config, opts *NativeCommandOptions) *localCommand {
 	}
 }
 
+func (c *localCommand) IsRunning() bool {
+	return c.cmd != nil && c.cmd.ProcessState == nil
+}
+
+func (c *localCommand) PID() int {
+	if c.cmd == nil || c.cmd.Process == nil {
+		return 0
+	}
+	return c.cmd.Process.Pid
+}
+
 func (c *localCommand) Start(ctx context.Context) error {
 	stdin := c.opts.Stdin
 	// TODO(adamb): it does not make sense really; just pass stdin as nil.
@@ -81,6 +92,18 @@ func (c *localCommand) Start(ctx context.Context) error {
 
 	c.logger.Info("a local command started")
 
+	return nil
+}
+
+func (c *localCommand) StopWithSignal(sig os.Signal) error {
+	// Try to terminate the whole process group. If it fails, fall back to stdlib methods.
+	if err := signalPgid(c.cmd.Process.Pid, sig); err != nil {
+		c.logger.Info("failed to terminate process group; trying Process.Signal()", zap.Error(err))
+		if err := c.cmd.Process.Signal(sig); err != nil {
+			c.logger.Info("failed to signal process; trying Process.Kill()", zap.Error(err))
+			return errors.WithStack(c.cmd.Process.Kill())
+		}
+	}
 	return nil
 }
 

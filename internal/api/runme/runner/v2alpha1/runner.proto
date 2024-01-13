@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package runme.runner.v2alpha1;
+
+import "google/protobuf/wrappers.proto";
+
+option go_package = "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v2alpha1;runnerv2alpha1";
+
+message Project {
+  // project root folder
+  string root = 1;
+
+  // list of environment files to try and load
+  // start with
+  repeated string env_load_order = 2;
+}
+
+message Winsize {
+  // number of rows (in cells)
+  uint32 rows = 1;
+  // number of columns (in cells)
+  uint32 cols = 2;
+  // width in pixels
+  uint32 x = 3;
+  // height in pixels
+  uint32 y = 4;
+}
+
+enum ExecuteStop {
+  EXECUTE_STOP_UNSPECIFIED = 0;
+  EXECUTE_STOP_INTERRUPT = 1;
+  EXECUTE_STOP_KILL = 2;
+}
+
+message ExecuteRequest {
+  // document_path is a path to the document which contains
+  // the cell to execute.
+  //
+  // If project is set, document_path is relative to the project root,
+  // otherwise, it should be an absolute path. If it's a relative path,
+  // directory is used as a base.
+  string document_path = 1;
+
+  // project represents a project in which the document is located.
+  optional Project project = 2;
+
+  oneof block {
+    string block_id = 8;
+    string block_name = 9;
+  }
+
+  // directory to execute the program in.
+  string directory = 3;
+
+  // envs is a list of additional environment variables
+  // that will be injected to the executed program.
+  repeated string envs = 4;
+
+  // input_data is a byte array that will be send as input
+  // to the program.
+  bytes input_data = 5;
+
+  // stop requests the running process to be stopped.
+  // It is allowed only in the consecutive calls.
+  ExecuteStop stop = 6;
+
+  // sets pty winsize
+  // has no effect in non-interactive mode
+  optional Winsize winsize = 7;
+}
+
+message ProcessPID {
+  int64 pid = 1;
+}
+
+message ExecuteResponse {
+  // exit_code is sent only in the final message.
+  google.protobuf.UInt32Value exit_code = 1;
+
+  // stdout_data contains bytes from stdout since the last response.
+  bytes stdout_data = 2;
+
+  // stderr_data contains bytes from stderr since the last response.
+  bytes stderr_data = 3;
+
+  // pid contains the process' PID
+  // this is only sent once in an initial response for background processes.
+  ProcessPID pid = 4;
+}
+
+service RunnerService {
+  // Execute executes a program. Examine "ExecuteRequest" to explore
+  // configuration options.
+  //
+  // It's a bidirectional stream RPC method. It expects the first
+  // "ExecuteRequest" to contain details of a program to execute.
+  // Subsequent "ExecuteRequest" should only contain "input_data" as
+  // other fields will be ignored.
+  rpc Execute(stream ExecuteRequest) returns (stream ExecuteResponse) {}
+}

@@ -39,6 +39,17 @@ func newVirtualCommand(cfg *Config, opts *VirtualCommandOptions) *virtualCommand
 	}
 }
 
+func (c *virtualCommand) IsRunning() bool {
+	return c.cmd != nil && c.cmd.ProcessState == nil
+}
+
+func (c *virtualCommand) PID() int {
+	if c.cmd == nil || c.cmd.Process == nil {
+		return 0
+	}
+	return c.cmd.Process.Pid
+}
+
 func (c *virtualCommand) Start(ctx context.Context) error {
 	var err error
 
@@ -113,6 +124,28 @@ func (c *virtualCommand) Start(ctx context.Context) error {
 
 	c.logger.Info("a remote command started")
 
+	return nil
+}
+
+func (c *virtualCommand) StopWithSignal(sig os.Signal) error {
+	if c.pty != nil {
+		if sig == os.Interrupt {
+			_, _ = c.pty.Write([]byte{0x3})
+		}
+
+		if err := c.pty.Close(); err != nil {
+			c.logger.Info("failed to close pty; continuing")
+		}
+	}
+
+	// Try to terminate the whole process group. If it fails, fall back to stdlib methods.
+	if err := signalPgid(c.cmd.Process.Pid, sig); err != nil {
+		c.logger.Info("failed to terminate process group; trying Process.Signal()", zap.Error(err))
+		if err := c.cmd.Process.Signal(sig); err != nil {
+			c.logger.Info("failed to signal process; trying Process.Kill()", zap.Error(err))
+			return errors.WithStack(c.cmd.Process.Kill())
+		}
+	}
 	return nil
 }
 
