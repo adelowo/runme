@@ -19,6 +19,7 @@ type NativeCommand struct {
 	// cmd is populated when the command is started.
 	cmd *exec.Cmd
 
+	// tempFile is a temporary file created for the file mode execution.
 	tempFile *os.File
 
 	logger *zap.Logger
@@ -39,23 +40,17 @@ func (c *NativeCommand) Start(ctx context.Context) (err error) {
 	case *runnerv2alpha1.CommandMode_COMMAND_MODE_INLINE.Enum():
 		// no additional setup
 	case *runnerv2alpha1.CommandMode_COMMAND_MODE_FILE.Enum():
-		f, err := os.CreateTemp("", "runme-script-*")
-		if err != nil {
-			return errors.WithMessage(err, "failed to create a temporary file for script execution")
-		}
-		c.tempFile = f
-
-		if _, err := f.Write([]byte(c.cfg.GetScript())); err != nil {
-			return errors.WithMessage(err, "failed to write the script to the temporary file")
-		}
-
-		_ = f.Close()
+		c.tempFile, err = createTempFileFromScript(c.cfg)
 
 		defer func() {
 			if err != nil {
-				_ = c.cleanup()
+				c.cleanup()
 			}
 		}()
+
+		if err != nil {
+			return
+		}
 	}
 
 	stdin := c.opts.Stdin
@@ -78,8 +73,10 @@ func (c *NativeCommand) Start(ctx context.Context) (err error) {
 		stdin = os.NewFile(uintptr(newStdinFd), "")
 	}
 
-	// TODO(adamb): this should not work this way...
 	args := append([]string{}, c.cfg.Arguments...)
+
+	// TODO(adamb): it's not always true that the script-based program
+	// takes the filename as a last argument.
 	if c.tempFile != nil {
 		args = append(args, c.tempFile.Name())
 	}
@@ -90,7 +87,8 @@ func (c *NativeCommand) Start(ctx context.Context) (err error) {
 		args...,
 	)
 	c.cmd.Dir = c.cfg.Directory
-	c.cmd.Env = c.opts.Env
+	// TODO(adamb): verify if it's ok to use local env.
+	c.cmd.Env = append(os.Environ(), envFromConfigAndOptions(c.cfg, c.opts)...)
 	c.cmd.Stdin = stdin
 	c.cmd.Stdout = c.opts.Stdout
 	c.cmd.Stderr = c.opts.Stderr
@@ -130,7 +128,7 @@ func (c *NativeCommand) StopWithSignal(sig os.Signal) error {
 func (c *NativeCommand) Wait() error {
 	c.logger.Info("waiting for the local command to finish")
 
-	defer func() { _ = c.cleanup() }()
+	defer c.cleanup()
 
 	var stderr []byte
 
@@ -147,9 +145,11 @@ func (c *NativeCommand) Wait() error {
 	return errors.WithStack(err)
 }
 
-func (c *NativeCommand) cleanup() error {
+func (c *NativeCommand) cleanup() {
 	if c.tempFile == nil {
-		return nil
+		return
 	}
-	return os.Remove(c.tempFile.Name())
+	if err := os.Remove(c.tempFile.Name()); err != nil {
+		c.logger.Info("failed to remove temporary file", zap.Error(err))
+	}
 }

@@ -12,7 +12,7 @@ read name
 echo "Hello, $name!"
 ```
 
-```sh {"name":"python"}
+```sh {"name":"python", "interactive": true}
 python
 ```
 

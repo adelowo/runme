@@ -26,6 +26,7 @@ type VirtualCommand struct {
 	// stdin is Opts.Stdin wrapped in readCloser.
 	stdin io.ReadCloser
 
+	// tempFile is a temporary file created for the file mode execution.
 	tempFile *os.File
 
 	pty *os.File
@@ -78,6 +79,7 @@ func newVirtualCommand(cfg *Config, opts *VirtualCommandOptions) *VirtualCommand
 		stdin = &readCloser{r: opts.Stdin, done: make(chan struct{})}
 	}
 
+	// Stdout must be set, otherwise the command will hang trying to copy data from pty.
 	if opts.Stdout == nil {
 		opts.Stdout = io.Discard
 	}
@@ -101,12 +103,11 @@ func (c *VirtualCommand) PID() int {
 	return c.cmd.Process.Pid
 }
 
-func (c *VirtualCommand) SetWinsize(rows, cols, x, y uint16) (err error) {
+func (c *VirtualCommand) SetWinsize(rows, cols, x, y uint16) error {
 	if c.pty == nil {
-		return
+		return nil
 	}
-
-	err = pty.Setsize(c.pty, &pty.Winsize{
+	err := pty.Setsize(c.pty, &pty.Winsize{
 		Rows: rows,
 		Cols: cols,
 		X:    x,
@@ -122,23 +123,17 @@ func (c *VirtualCommand) Start(ctx context.Context) (err error) {
 	case *runnerv2alpha1.CommandMode_COMMAND_MODE_INLINE.Enum():
 		// no additional setup
 	case *runnerv2alpha1.CommandMode_COMMAND_MODE_FILE.Enum():
-		f, err := os.CreateTemp("", "runme-script-*")
-		if err != nil {
-			return errors.WithMessage(err, "failed to create a temporary file for script execution")
-		}
-		c.tempFile = f
-
-		if _, err := f.Write([]byte(c.cfg.GetScript())); err != nil {
-			return errors.WithMessage(err, "failed to write the script to the temporary file")
-		}
-
-		_ = f.Close()
+		c.tempFile, err = createTempFileFromScript(c.cfg)
 
 		defer func() {
 			if err != nil {
-				_ = c.cleanup()
+				c.cleanup()
 			}
 		}()
+
+		if err != nil {
+			return
+		}
 	}
 
 	c.pty, c.tty, err = pty.Open()
@@ -150,8 +145,10 @@ func (c *VirtualCommand) Start(ctx context.Context) (err error) {
 		return err
 	}
 
-	// TODO(adamb): this should not work this way...
 	args := append([]string{}, c.cfg.Arguments...)
+
+	// TODO(adamb): it's not always true that the script-based program
+	// takes the filename as a last argument.
 	if c.tempFile != nil {
 		args = append(args, c.tempFile.Name())
 	}
@@ -162,8 +159,8 @@ func (c *VirtualCommand) Start(ctx context.Context) (err error) {
 		args...,
 	)
 	c.cmd.Dir = c.cfg.Directory
-	// TODO(adamb): verify the order
-	c.cmd.Env = append(append([]string{}, c.opts.Env...), c.cfg.Env...)
+	// TODO(adamb): verify if it's ok to use local env.
+	c.cmd.Env = append(os.Environ(), envFromConfigAndOptions(c.cfg, c.opts)...)
 	c.cmd.Stdin = c.tty
 	c.cmd.Stdout = c.tty
 	c.cmd.Stderr = c.tty
@@ -249,12 +246,12 @@ func (c *VirtualCommand) StopWithSignal(sig os.Signal) error {
 func (c *VirtualCommand) Wait() error {
 	c.logger.Info("waiting for the virtual command to finish")
 
-	defer func() { _ = c.cleanup() }()
+	defer c.cleanup()
 
 	waitErr := c.cmd.Wait()
 	c.logger.Info("the virtual command finished", zap.Error(waitErr))
 
-	_ = c.closeIOLoops()
+	_ = c.closeIO()
 
 	c.wg.Wait()
 
@@ -269,13 +266,6 @@ func (c *VirtualCommand) Wait() error {
 	return err
 }
 
-func (c *VirtualCommand) closeIOLoops() (err error) {
-	if !isNil(c.stdin) {
-		err = c.stdin.Close()
-	}
-	return
-}
-
 func (c *VirtualCommand) setErr(err error) {
 	if err == nil {
 		return
@@ -287,11 +277,20 @@ func (c *VirtualCommand) setErr(err error) {
 	c.mx.Unlock()
 }
 
-func (c *VirtualCommand) cleanup() error {
-	if c.tempFile == nil {
-		return nil
+func (c *VirtualCommand) closeIO() (err error) {
+	if !isNil(c.stdin) {
+		err = c.stdin.Close()
 	}
-	return os.Remove(c.tempFile.Name())
+	return
+}
+
+func (c *VirtualCommand) cleanup() {
+	if c.tempFile == nil {
+		return
+	}
+	if err := os.Remove(c.tempFile.Name()); err != nil {
+		c.logger.Info("failed to remove temporary file", zap.Error(err))
+	}
 }
 
 func isNil(val any) bool {

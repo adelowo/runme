@@ -100,6 +100,9 @@ func (b *inlineShellConfigBuilder) Build() (*command.Config, error) {
 	}
 
 	// Using "-i" options seems to be not needed.
+	// cfg.Arguments = append(cfg.Arguments, "-i")
+
+	cfg.Mode = runnerv2alpha1.CommandMode_COMMAND_MODE_INLINE
 
 	cfg.Interactive = b.block.Interactive()
 
