@@ -70,7 +70,7 @@ func shellOptionsFromProgram(programPath string) (res string) {
 	// TODO(mxs): powershell and DOS are missing
 	switch shell {
 	case "zsh", "ksh", "bash":
-		res += "set -e -x -o pipefail"
+		res += "set -e -o pipefail"
 	case "sh":
 		res += "set -e"
 	}

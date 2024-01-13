@@ -10,10 +10,11 @@ import (
 )
 
 type Config struct {
-	Name string
-	Dirs []string
-	Path string
-	Args []string
+	Name        string
+	Dirs        []string
+	Path        string
+	Args        []string
+	Interactive bool
 }
 
 type ConfigBuilder interface {
@@ -83,6 +84,7 @@ func (b *inlineShellConfigBuilder) Build() (*Config, error) {
 	// if b.block.Interactive() {
 	// 	cfg.Args = append(cfg.Args, "-i")
 	// }
+	cfg.Interactive = b.block.Interactive()
 
 	if script := prepareScript(b.block, cfg.Path); script != "" {
 		cfg.Args = append(cfg.Args, "-c", script)

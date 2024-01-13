@@ -3,10 +3,7 @@ package command
 import (
 	"context"
 	"io"
-	"os"
-	"syscall"
 
-	"github.com/pkg/errors"
 	"github.com/stateful/runme/internal/document"
 	"go.uber.org/zap"
 )
@@ -52,35 +49,37 @@ func NewLocal(
 		return nil, err
 	}
 
-	stdin := options.Stdin
+	return newLocalCommand(cfg, options), nil
+}
 
-	if f, ok := stdin.(*os.File); ok && f != nil {
-		// Duplicate /dev/stdin.
-		newStdinFd, err := syscall.Dup(int(f.Fd()))
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to dup stdin")
-		}
-		syscall.CloseOnExec(newStdinFd)
+type RemoteOptions struct {
+	ParentDir string
 
-		// TODO(adamb): setting it to the non-block mode fails on the simple "read" command.
-		// if err := syscall.SetNonblock(newStdinFd, true); err != nil {
-		// 	return nil, errors.Wrap(err, "failed to set new stdin fd in non-blocking mode")
-		// }
+	Env []string
 
-		stdin = os.NewFile(uintptr(newStdinFd), "")
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+
+	Logger *zap.Logger
+}
+
+func NewRemote(
+	block *document.CodeBlock,
+	options *RemoteOptions,
+) (Command, error) {
+	if options == nil {
+		options = &RemoteOptions{}
 	}
 
-	cmd := &localCommand{
-		Name:   cfg.Name,
-		Path:   cfg.Path,
-		Args:   cfg.Args,
-		PreEnv: options.Env,
-		Dir:    resolveDir(options.ParentDir, cfg.Dirs),
-		Stdin:  stdin,
-		Stdout: options.Stdout,
-		Stderr: options.Stderr,
-		Logger: options.Logger.With(zap.String("name", cfg.Name)),
+	if options.Logger == nil {
+		options.Logger = zap.NewNop()
 	}
 
-	return cmd, nil
+	cfg, err := NewConfigBuilder(block).Build()
+	if err != nil {
+		return nil, err
+	}
+
+	return newRemoteCommand(cfg, options), nil
 }
