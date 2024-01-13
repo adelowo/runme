@@ -2,12 +2,10 @@ package command
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
 	runnerv2alpha1 "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v2alpha1"
@@ -33,24 +31,8 @@ func (e ErrInterpretersNotFound) Error() string {
 // It's agnostic to the runtime or particular execution settings.
 type Config = runnerv2alpha1.ProgramConfig
 
-func PrintConfig(cfg *Config) (string, error) {
-	var buf strings.Builder
-
-	switch cfg.Mode {
-	case runnerv2alpha1.CommandMode_COMMAND_MODE_INLINE:
-		_, _ = buf.WriteString(cfg.ProgramName)
-		_, _ = buf.WriteString(" ")
-		_, _ = buf.WriteString(strings.Join(cfg.Arguments, " "))
-	case runnerv2alpha1.CommandMode_COMMAND_MODE_FILE:
-		_, _ = buf.WriteString("#!")
-		_, _ = buf.WriteString(cfg.ProgramName)
-		_, _ = buf.WriteString(" ")
-		_, _ = buf.WriteString(strings.Join(cfg.Arguments, " "))
-		_, _ = buf.WriteString("\n\n")
-		_, _ = buf.WriteString(cfg.GetScript())
-	}
-
-	return buf.String(), nil
+func NormalizeConfigForDryRun(cfg *Config) (*Config, error) {
+	return normalizeConfig(cfg, &argsNormalizer{})
 }
 
 // redactConfig returns a new Config instance and copies only fields considered safe.
@@ -138,23 +120,6 @@ func (n *modeNormalizer) Normalize(cfg *Config) (*Config, error) {
 	}
 
 	return result, nil
-}
-
-func createTempFileFromScript(cfg *Config) (*os.File, error) {
-	f, err := os.CreateTemp("", "runme-script-*")
-	if err != nil {
-		return nil, errors.WithMessage(err, "failed to create a temporary file for script execution")
-	}
-
-	if _, err := f.Write([]byte(cfg.GetScript())); err != nil {
-		return nil, errors.WithMessage(err, "failed to write the script to the temporary file")
-	}
-
-	if err := f.Close(); err != nil {
-		return nil, errors.WithMessage(err, "failed to close the temporary file")
-	}
-
-	return f, nil
 }
 
 func prepareScriptFromLines(programPath string, lines []string) string {

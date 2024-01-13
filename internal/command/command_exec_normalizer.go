@@ -1,9 +1,11 @@
 package command
 
 import (
+	"io"
 	"os"
 	"strings"
 
+	"github.com/pkg/errors"
 	runnerv2alpha1 "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v2alpha1"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -14,7 +16,7 @@ type argsNormalizer struct {
 	logger   *zap.Logger
 }
 
-func (n *argsNormalizer) Normalize(cfg *Config) (_ *Config, err error) {
+func (n *argsNormalizer) Normalize(cfg *Config) (*Config, error) {
 	args := append([]string{}, cfg.Arguments...)
 
 	switch cfg.Mode {
@@ -39,9 +41,15 @@ func (n *argsNormalizer) Normalize(cfg *Config) (_ *Config, err error) {
 			args = append(args, "-c", script)
 		}
 	case *runnerv2alpha1.CommandMode_COMMAND_MODE_FILE.Enum():
-		n.tempFile, err = createTempFileFromScript(cfg)
+		var err error
+
+		n.tempFile, err = n.createTempFile()
 		if err != nil {
-			return
+			return nil, err
+		}
+
+		if err := n.writeScript(cfg, n.tempFile); err != nil {
+			return nil, err
 		}
 
 		// TODO(adamb): it's not always true that the script-based program
@@ -52,6 +60,18 @@ func (n *argsNormalizer) Normalize(cfg *Config) (_ *Config, err error) {
 	result := proto.Clone(cfg).(*Config)
 	result.Arguments = args
 	return result, nil
+}
+
+func (n *argsNormalizer) createTempFile() (*os.File, error) {
+	f, err := os.CreateTemp("", "runme-script-*")
+	return f, errors.WithMessage(err, "failed to create a temporary file for script execution")
+}
+
+func (n *argsNormalizer) writeScript(cfg *Config, f io.WriteCloser) error {
+	if _, err := f.Write([]byte(cfg.GetScript())); err != nil {
+		return errors.WithMessage(err, "failed to write the script to the temporary file")
+	}
+	return errors.WithMessage(f.Close(), "failed to close the temporary file")
 }
 
 func (n *argsNormalizer) cleanup() {
