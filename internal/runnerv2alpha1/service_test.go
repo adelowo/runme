@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,14 +25,19 @@ func testStartRunnerServiceServer(t *testing.T) (
 	interface{ Dial() (net.Conn, error) },
 	func(),
 ) {
+	t.Helper()
+
 	logger, err := zap.NewDevelopment()
 	require.NoError(t, err)
+
 	lis := bufconn.Listen(1024 << 10)
 	server := grpc.NewServer()
 	runnerService, err := newRunnerService(logger)
 	require.NoError(t, err)
+
 	runnerv2alpha1.RegisterRunnerServiceServer(server, runnerService)
 	go server.Serve(lis)
+
 	return lis, server.Stop
 }
 
@@ -41,6 +45,8 @@ func testCreateRunnerServiceClient(
 	t *testing.T,
 	lis interface{ Dial() (net.Conn, error) },
 ) (*grpc.ClientConn, runnerv2alpha1.RunnerServiceClient) {
+	t.Helper()
+
 	conn, err := grpc.Dial(
 		"",
 		grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
@@ -49,6 +55,7 @@ func testCreateRunnerServiceClient(
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
+
 	return conn, runnerv2alpha1.NewRunnerServiceClient(conn)
 }
 
@@ -106,89 +113,65 @@ func TestRunnerServiceServerExecute(t *testing.T) {
 	err := os.WriteFile(readmeFile, testReadme, 0o644)
 	require.NoError(t, err)
 
-	t.Run("Basic", func(t *testing.T) {
-		t.Parallel()
+	testCases := []struct {
+		name           string
+		blockName      string
+		inputData      []byte
+		expectedOutput string
+	}{
+		{
+			name:           "Basic",
+			blockName:      "basic",
+			expectedOutput: "test",
+		},
 
-		stream, err := client.Execute(context.Background())
-		require.NoError(t, err)
+		{
+			name:           "BasicSleep",
+			blockName:      "basic-sleep",
+			expectedOutput: "1\r\n2\r\n",
+		},
+		{
+			name:           "BasicInput",
+			blockName:      "basic-input",
+			inputData:      []byte("Frank\n"),
+			expectedOutput: "My name is Frank\r\n",
+		},
+	}
 
-		execResult := make(chan executeResult)
-		go getExecuteResult(stream, execResult)
+	for _, tc := range testCases {
+		tc := tc
 
-		err = stream.Send(&runnerv2alpha1.ExecuteRequest{
-			Project: &runnerv2alpha1.Project{
-				Root: tmpDir,
-			},
-			Block: &runnerv2alpha1.ExecuteRequest_BlockName{
-				BlockName: "basic",
-			},
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			stream, err := client.Execute(context.Background())
+			require.NoError(t, err)
+
+			execResult := make(chan executeResult)
+			go getExecuteResult(stream, execResult)
+
+			req := &runnerv2alpha1.ExecuteRequest{
+				Project: &runnerv2alpha1.Project{
+					Root: tmpDir,
+				},
+				Block: &runnerv2alpha1.ExecuteRequest_BlockName{
+					BlockName: tc.blockName,
+				},
+			}
+
+			if tc.inputData != nil {
+				req.Interactive = true
+				req.InputData = tc.inputData
+			}
+
+			err = stream.Send(req)
+			assert.NoError(t, err)
+
+			result := <-execResult
+
+			assert.NoError(t, result.Err)
+			assert.Equal(t, tc.expectedOutput, string(result.Stdout))
+			assert.EqualValues(t, 0, result.ExitCode)
 		})
-		assert.NoError(t, err)
-
-		result := <-execResult
-
-		assert.NoError(t, result.Err)
-		assert.Equal(t, "test", string(result.Stdout))
-		assert.EqualValues(t, 0, result.ExitCode)
-	})
-
-	t.Run("BasicSleep", func(t *testing.T) {
-		t.Parallel()
-
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-
-		stream, err := client.Execute(ctx)
-		require.NoError(t, err)
-
-		execResult := make(chan executeResult)
-		go getExecuteResult(stream, execResult)
-
-		err = stream.Send(&runnerv2alpha1.ExecuteRequest{
-			Project: &runnerv2alpha1.Project{
-				Root: tmpDir,
-			},
-			Block: &runnerv2alpha1.ExecuteRequest_BlockName{
-				BlockName: "basic-sleep",
-			},
-		})
-		assert.NoError(t, err)
-
-		result := <-execResult
-
-		assert.NoError(t, result.Err)
-		assert.Equal(t, "1\r\n2\r\n", string(result.Stdout))
-		assert.EqualValues(t, 0, result.ExitCode)
-	})
-
-	t.Run("BasicInput", func(t *testing.T) {
-		t.Parallel()
-
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-
-		stream, err := client.Execute(ctx)
-		require.NoError(t, err)
-
-		execResult := make(chan executeResult)
-		go getExecuteResult(stream, execResult)
-
-		err = stream.Send(&runnerv2alpha1.ExecuteRequest{
-			Project: &runnerv2alpha1.Project{
-				Root: tmpDir,
-			},
-			Block: &runnerv2alpha1.ExecuteRequest_BlockName{
-				BlockName: "basic-input",
-			},
-			Interactive: true,
-			InputData:   []byte("Frank\n"),
-		})
-		assert.NoError(t, err)
-
-		result := <-execResult
-
-		assert.NoError(t, result.Err)
-		assert.Equal(t, "My name is Frank\r\n", string(result.Stdout))
-		assert.EqualValues(t, 0, result.ExitCode)
-	})
+	}
 }

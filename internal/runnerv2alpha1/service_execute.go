@@ -74,19 +74,20 @@ func (r *runnerService) Execute(srv runnerv2alpha1.RunnerService_ExecuteServer) 
 				return
 			}
 
-			// only update winsize when field is explicitly set
-			// if req.ProtoReflect().Has(
-			// 	req.ProtoReflect().Descriptor().Fields().ByName("winsize"),
-			// ) {
-			// 	cmd.setWinsize(runnerWinsizeToPty(req.Winsize))
-			// }
+			// Update the winsize if it is explicitly set.
+			if req.Winsize != nil {
+				err := exec.Cmd.SetWinsize(uint16(req.Winsize.Cols), uint16(req.Winsize.Rows), uint16(req.Winsize.X), uint16(req.Winsize.Y))
+				if err != nil {
+					logger.Info("failed to set winsize; ignoring", zap.Error(err))
+				}
+			}
 
 			// First, handle the input data. It does not prevent to stop the program right after.
 			if l := len(req.InputData); l > 0 {
 				logger.Debug("received input data", zap.Int("len", l))
 				_, err = exec.Write(req.InputData)
 				if err != nil {
-					logger.Info("failed to write to stdin", zap.Error(err))
+					logger.Info("failed to write to stdin; ignoring", zap.Error(err))
 				}
 			}
 

@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"os"
-
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/stateful/runme/internal/command"
 	"github.com/stateful/runme/internal/document"
@@ -63,17 +60,11 @@ func runNewCmd() *cobra.Command {
 }
 
 func runCommandNatively(cmd *cobra.Command, block *document.CodeBlock, logger *zap.Logger) error {
-	dir, err := os.Getwd()
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
 	commandOpts := &command.NativeCommandOptions{
-		ParentDir: dir,
-		Stdin:     cmd.InOrStdin(),
-		Stdout:    cmd.OutOrStdout(),
-		Stderr:    cmd.ErrOrStderr(),
-		Logger:    logger,
+		Stdin:  cmd.InOrStdin(),
+		Stdout: cmd.OutOrStdout(),
+		Stderr: cmd.ErrOrStderr(),
+		Logger: logger,
 	}
 
 	localCmd, err := command.NewNative(block, commandOpts)

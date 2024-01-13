@@ -1,25 +1,14 @@
 package command
 
 import (
-	"context"
 	"io"
-	"os"
+
+	"go.uber.org/zap"
 
 	"github.com/stateful/runme/internal/document"
-	"go.uber.org/zap"
 )
 
-type Command interface {
-	IsRunning() bool
-	PID() int
-	Start(context.Context) error
-	StopWithSignal(os.Signal) error
-	Wait() error
-}
-
 type NativeCommandOptions struct {
-	ParentDir string
-
 	Env []string
 
 	Stdin  io.Reader
@@ -32,7 +21,7 @@ type NativeCommandOptions struct {
 func NewNative(
 	block *document.CodeBlock,
 	options *NativeCommandOptions,
-) (Command, error) {
+) (*NativeCommand, error) {
 	if options == nil {
 		options = &NativeCommandOptions{}
 	}
@@ -50,13 +39,10 @@ func NewNative(
 }
 
 type VirtualCommandOptions struct {
-	ParentDir string
-
 	Env []string
 
 	Stdin  io.Reader
 	Stdout io.Writer
-	Stderr io.Writer
 
 	Logger *zap.Logger
 }
@@ -64,7 +50,7 @@ type VirtualCommandOptions struct {
 func NewVirtual(
 	block *document.CodeBlock,
 	options *VirtualCommandOptions,
-) (Command, error) {
+) (*VirtualCommand, error) {
 	if options == nil {
 		options = &VirtualCommandOptions{}
 	}

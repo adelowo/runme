@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type localCommand struct {
+type NativeCommand struct {
 	cfg  *Config
 	opts *NativeCommandOptions
 
@@ -20,31 +20,16 @@ type localCommand struct {
 	logger *zap.Logger
 }
 
-func newNativeCommand(cfg *Config, opts *NativeCommandOptions) *localCommand {
-	return &localCommand{
+func newNativeCommand(cfg *Config, opts *NativeCommandOptions) *NativeCommand {
+	return &NativeCommand{
 		cfg:    cfg,
 		opts:   opts,
 		logger: opts.Logger.With(zap.String("name", cfg.Name)),
 	}
 }
 
-func (c *localCommand) IsRunning() bool {
-	return c.cmd != nil && c.cmd.ProcessState == nil
-}
-
-func (c *localCommand) PID() int {
-	if c.cmd == nil || c.cmd.Process == nil {
-		return 0
-	}
-	return c.cmd.Process.Pid
-}
-
-func (c *localCommand) Start(ctx context.Context) error {
+func (c *NativeCommand) Start(ctx context.Context) error {
 	stdin := c.opts.Stdin
-	// TODO(adamb): it does not make sense really; just pass stdin as nil.
-	if !c.cfg.Interactive {
-		stdin = nil
-	}
 
 	if f, ok := stdin.(*os.File); ok && f != nil {
 		// Duplicate /dev/stdin.
@@ -84,7 +69,7 @@ func (c *localCommand) Start(ctx context.Context) error {
 	// like "python", hence, it's commented out.
 	// setSysProcAttrPgid(c.cmd)
 
-	c.logger.Info("starting a local command", zap.Any("command", c))
+	c.logger.Info("starting a local command", zap.String("program", c.cfg.ProgramPath), zap.Strings("args", c.cfg.Args))
 
 	if err := c.cmd.Start(); err != nil {
 		return errors.WithStack(err)
@@ -95,7 +80,7 @@ func (c *localCommand) Start(ctx context.Context) error {
 	return nil
 }
 
-func (c *localCommand) StopWithSignal(sig os.Signal) error {
+func (c *NativeCommand) StopWithSignal(sig os.Signal) error {
 	// Try to terminate the whole process group. If it fails, fall back to stdlib methods.
 	if err := signalPgid(c.cmd.Process.Pid, sig); err != nil {
 		c.logger.Info("failed to terminate process group; trying Process.Signal()", zap.Error(err))
@@ -107,9 +92,20 @@ func (c *localCommand) StopWithSignal(sig os.Signal) error {
 	return nil
 }
 
-func (c *localCommand) Wait() error {
+func (c *NativeCommand) Wait() error {
 	c.logger.Info("waiting for the local command to finish")
+
+	var stderr []byte
+
 	err := c.cmd.Wait()
-	c.logger.Info("the local command finished", zap.Error(err))
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			stderr = exitErr.Stderr
+		}
+	}
+
+	c.logger.Info("the local command finished", zap.Error(err), zap.ByteString("stderr", stderr))
+
 	return errors.WithStack(err)
 }

@@ -1,7 +1,9 @@
 package command
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/pkg/errors"
 	"github.com/stateful/runme/internal/document"
@@ -23,6 +25,13 @@ type Config struct {
 
 	// Interactive, if true, allows the input from the user.
 	Interactive bool
+
+	// TempDir is a temporary directory.
+	TempDir string
+
+	// ScriptPath is a path to a script file.
+	// It is also the last argument in Args.
+	ScriptPath string
 }
 
 type ConfigBuilder interface {
@@ -60,6 +69,10 @@ func (b *baseConfigBuilder) dir() string {
 
 	if dir := b.block.Cwd(); dir != "" {
 		dirs = append(dirs, dir)
+	}
+
+	if cwd, err := os.Getwd(); err == nil {
+		dirs = append(dirs, cwd)
 	}
 
 	// TODO(adamb): figure out the first argument.
@@ -124,5 +137,28 @@ type fileConfigBuilder struct {
 }
 
 func (b *fileConfigBuilder) Build() (*Config, error) {
-	return b.baseConfigBuilder.Build()
+	cfg, err := b.baseConfigBuilder.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.Interactive = b.block.Interactive()
+
+	cfg.TempDir, err = os.MkdirTemp("", "runme-*")
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	scriptFile := filepath.Join(cfg.TempDir, "script-file-"+b.block.Name()+"."+b.block.Language())
+
+	err = os.WriteFile(scriptFile, b.block.Content(), 0o600)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	cfg.ScriptPath = scriptFile
+
+	cfg.Args = append(cfg.Args, scriptFile)
+
+	return cfg, nil
 }

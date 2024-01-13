@@ -10,7 +10,6 @@ import (
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/stateful/runme/internal/command"
 	"github.com/stateful/runme/internal/document"
@@ -40,12 +39,11 @@ type execution struct {
 	Project *project.Project
 	Req     *runnerv2alpha1.ExecuteRequest
 
-	Cmd command.Command
+	Cmd *command.VirtualCommand
 
 	stdin       io.Reader
 	stdinWriter io.WriteCloser
 	stdout      *rbuffer.RingBuffer
-	stderr      *rbuffer.RingBuffer
 
 	logger *zap.Logger
 }
@@ -71,14 +69,13 @@ func newExecutionFrom(ctx context.Context, id string, req *runnerv2alpha1.Execut
 	}
 
 	stdout := rbuffer.NewRingBuffer(ringBufferSize)
-	stderr := rbuffer.NewRingBuffer(ringBufferSize)
 
 	cmd, err := command.NewVirtual(
 		block,
 		&command.VirtualCommandOptions{
 			Stdin:  stdin,
 			Stdout: stdout,
-			Stderr: stderr,
+			Logger: logger,
 		},
 	)
 	if err != nil {
@@ -96,7 +93,6 @@ func newExecutionFrom(ctx context.Context, id string, req *runnerv2alpha1.Execut
 		stdin:       stdin,
 		stdinWriter: stdinWriter,
 		stdout:      stdout,
-		stderr:      stderr,
 
 		logger: logger,
 	}
@@ -125,7 +121,7 @@ func (e *execution) Wait(ctx context.Context, sender sender) (int, error) {
 
 	errc := make(chan error, 1)
 	go func() {
-		errc <- readSendLoop(e.stdout, e.stderr, sender)
+		errc <- readSendLoop(e.stdout, sender)
 	}()
 
 	// If waitErr is not nil, only log the errors but return waitErr.
@@ -163,56 +159,33 @@ func (e *execution) closeIO() {
 
 	err = e.stdout.Close()
 	e.logger.Debug("closed stdout writer", zap.Error(err))
-
-	err = e.stderr.Close()
-	e.logger.Debug("closed stderr writer", zap.Error(err))
 }
 
 type sender interface {
 	Send(*runnerv2alpha1.ExecuteResponse) error
 }
 
-func readSendLoop(
-	stdout io.Reader,
-	stderr io.Reader,
-	sender sender,
-) error {
-	read := func(reader io.Reader, fn func(p []byte) *runnerv2alpha1.ExecuteResponse) error {
-		reader = io.LimitReader(reader, msgBufferSize)
+func readSendLoop(reader io.Reader, sender sender) error {
+	limitedReader := io.LimitReader(reader, msgBufferSize)
 
-		for {
-			buf := make([]byte, msgBufferSize)
-			n, err := reader.Read(buf)
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					return nil
-				}
-				return errors.WithStack(err)
+	for {
+		buf := make([]byte, msgBufferSize)
+		n, err := limitedReader.Read(buf)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
 			}
-			if n == 0 {
-				continue
-			}
-			if err := sender.Send(fn(buf[:n])); err != nil {
-				return errors.WithStack(err)
-			}
+			return errors.WithStack(err)
+		}
+		if n == 0 {
+			continue
+		}
+
+		err = sender.Send(&runnerv2alpha1.ExecuteResponse{StdoutData: buf[:n]})
+		if err != nil {
+			return errors.WithStack(err)
 		}
 	}
-
-	g := new(errgroup.Group)
-
-	g.Go(func() error {
-		return read(stdout, func(p []byte) *runnerv2alpha1.ExecuteResponse {
-			return &runnerv2alpha1.ExecuteResponse{StdoutData: p}
-		})
-	})
-
-	g.Go(func() error {
-		return read(stderr, func(p []byte) *runnerv2alpha1.ExecuteResponse {
-			return &runnerv2alpha1.ExecuteResponse{StderrData: p}
-		})
-	})
-
-	return g.Wait()
 }
 
 func getProjectFromRequest(req *runnerv2alpha1.ExecuteRequest, logger *zap.Logger) (*project.Project, error) {

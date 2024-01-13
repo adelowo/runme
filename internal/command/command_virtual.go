@@ -14,14 +14,14 @@ import (
 	"go.uber.org/zap"
 )
 
-type virtualCommand struct {
-	Cfg  *Config
-	Opts *VirtualCommandOptions
+type VirtualCommand struct {
+	cfg  *Config
+	opts *VirtualCommandOptions
 
 	// cmd is populated when the command is started.
 	cmd *exec.Cmd
 
-	// stdin is Opts.Stdin wrapped in ReadCloser.
+	// stdin is Opts.Stdin wrapped in readCloser.
 	stdin io.ReadCloser
 
 	pty *os.File
@@ -35,7 +35,7 @@ type virtualCommand struct {
 	logger *zap.Logger
 }
 
-// readClose allows to wrap a io.Reader into io.ReadCloser.
+// readCloser allows to wrap a io.Reader into io.ReadCloser.
 //
 // When Close() is called, the underlying read operation is ignored.
 // A disadvantage is that it may leak and hang indefinitely, or
@@ -67,33 +67,47 @@ func (r *readCloser) Close() error {
 	return nil
 }
 
-func newVirtualCommand(cfg *Config, opts *VirtualCommandOptions) *virtualCommand {
+func newVirtualCommand(cfg *Config, opts *VirtualCommandOptions) *VirtualCommand {
 	var stdin io.ReadCloser
 
 	if opts.Stdin != nil {
 		stdin = &readCloser{r: opts.Stdin, done: make(chan struct{})}
 	}
 
-	return &virtualCommand{
-		Cfg:    cfg,
-		Opts:   opts,
+	return &VirtualCommand{
+		cfg:    cfg,
+		opts:   opts,
 		stdin:  stdin,
 		logger: opts.Logger.With(zap.String("name", cfg.Name)),
 	}
 }
 
-func (c *virtualCommand) IsRunning() bool {
+func (c *VirtualCommand) IsRunning() bool {
 	return c.cmd != nil && c.cmd.ProcessState == nil
 }
 
-func (c *virtualCommand) PID() int {
+func (c *VirtualCommand) PID() int {
 	if c.cmd == nil || c.cmd.Process == nil {
 		return 0
 	}
 	return c.cmd.Process.Pid
 }
 
-func (c *virtualCommand) Start(ctx context.Context) error {
+func (c *VirtualCommand) SetWinsize(rows, cols, x, y uint16) (err error) {
+	if c.pty == nil {
+		return
+	}
+
+	err = pty.Setsize(c.pty, &pty.Winsize{
+		Rows: rows,
+		Cols: cols,
+		X:    x,
+		Y:    y,
+	})
+	return errors.WithStack(err)
+}
+
+func (c *VirtualCommand) Start(ctx context.Context) error {
 	var err error
 
 	c.pty, c.tty, err = pty.Open()
@@ -107,11 +121,11 @@ func (c *virtualCommand) Start(ctx context.Context) error {
 
 	c.cmd = exec.CommandContext(
 		ctx,
-		c.Cfg.ProgramPath,
-		c.Cfg.Args...,
+		c.cfg.ProgramPath,
+		c.cfg.Args...,
 	)
-	c.cmd.Dir = c.Cfg.Dir
-	c.cmd.Env = c.Opts.Env
+	c.cmd.Dir = c.cfg.Dir
+	c.cmd.Env = c.opts.Env
 	c.cmd.Stdin = c.tty
 	c.cmd.Stdout = c.tty
 	c.cmd.Stderr = c.tty
@@ -123,18 +137,18 @@ func (c *virtualCommand) Start(ctx context.Context) error {
 		go func() {
 			defer c.wg.Done()
 			n, err := io.Copy(c.pty, c.stdin)
-			c.logger.Info("copy from stdin to pty", zap.Error(err), zap.Int64("count", n))
+			c.logger.Info("finished copying from stdin to pty", zap.Error(err), zap.Int64("count", n))
 			if err != nil {
 				c.setErr(errors.WithStack(err))
 			}
 		}()
 	}
 
-	if !isNil(c.Opts.Stdout) {
+	if !isNil(c.opts.Stdout) {
 		c.wg.Add(1)
 		go func() {
 			defer c.wg.Done()
-			n, err := io.Copy(c.Opts.Stdout, c.pty)
+			n, err := io.Copy(c.opts.Stdout, c.pty)
 			if err != nil {
 				// Linux kernel returns EIO when attempting to read from
 				// a master pseudo-terminal which no longer has an open slave.
@@ -157,18 +171,18 @@ func (c *virtualCommand) Start(ctx context.Context) error {
 		}()
 	}
 
-	c.logger.Info("starting a remote command", zap.Any("command", c))
+	c.logger.Info("starting a virtual command", zap.String("program", c.cfg.ProgramPath), zap.Strings("args", c.cfg.Args))
 
 	if err := c.cmd.Start(); err != nil {
 		return errors.WithStack(err)
 	}
 
-	c.logger.Info("a remote command started")
+	c.logger.Info("a virtual command started")
 
 	return nil
 }
 
-func (c *virtualCommand) StopWithSignal(sig os.Signal) error {
+func (c *VirtualCommand) StopWithSignal(sig os.Signal) error {
 	c.logger.Info("stopping the virtual command with signal", zap.String("signal", sig.String()))
 
 	if c.pty != nil {
@@ -194,32 +208,35 @@ func (c *virtualCommand) StopWithSignal(sig os.Signal) error {
 	return nil
 }
 
-func (c *virtualCommand) Wait() error {
-	c.logger.Info("waiting for the remote command to finish")
+func (c *VirtualCommand) Wait() error {
+	c.logger.Info("waiting for the virtual command to finish")
 
-	err := c.cmd.Wait()
-	c.setErr(err)
-	c.logger.Info("the remote command finished", zap.Error(err))
+	waitErr := c.cmd.Wait()
+	c.logger.Info("the virtual command finished", zap.Error(waitErr))
 
 	_ = c.closeIOLoops()
 
 	c.wg.Wait()
 
+	if waitErr != nil {
+		return errors.WithStack(waitErr)
+	}
+
 	c.mx.Lock()
-	err = c.err
+	err := c.err
 	c.mx.Unlock()
 
-	return errors.WithStack(err)
+	return err
 }
 
-func (c *virtualCommand) closeIOLoops() (err error) {
+func (c *VirtualCommand) closeIOLoops() (err error) {
 	if !isNil(c.stdin) {
 		err = c.stdin.Close()
 	}
 	return
 }
 
-func (c *virtualCommand) setErr(err error) {
+func (c *VirtualCommand) setErr(err error) {
 	if err == nil {
 		return
 	}
@@ -230,6 +247,6 @@ func (c *virtualCommand) setErr(err error) {
 	c.mx.Unlock()
 }
 
-func isNil(val interface{}) bool {
+func isNil(val any) bool {
 	return val == nil || reflect.ValueOf(val).IsNil()
 }

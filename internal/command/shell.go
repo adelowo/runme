@@ -10,7 +10,10 @@ import (
 func isShellLanguage(languageID string) bool {
 	switch strings.ToLower(languageID) {
 	// shellscripts
-	case "sh", "bash", "zsh", "ksh", "shell", "shellscript":
+	// TODO(adamb): breaking change: shellscript was removed to indicate
+	// that it should be executed as a file. Consider adding it back and
+	// using attributes to decide how a code block should be executed.
+	case "sh", "bash", "zsh", "ksh", "shell":
 		return true
 
 	// dos
