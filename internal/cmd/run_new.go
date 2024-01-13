@@ -55,14 +55,7 @@ func runNewCmd() *cobra.Command {
 			}
 			defer logger.Sync()
 
-			for i := 0; i < 2; i++ {
-				err := runCommandNatively(cmd, tasks[0].CodeBlock, logger)
-				if err != nil {
-					return err
-				}
-			}
-
-			return nil
+			return runCommandNatively(cmd, tasks[0].CodeBlock, logger)
 		},
 	}
 
