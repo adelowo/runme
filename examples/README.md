@@ -67,7 +67,7 @@ echo "Hi, $name!"
 It can also execute a snippet of JavaScript code:
 
 ```js {"id":"01HF7BT3HD84GWTQB8ZPB8TH53","name":"hello-js"}
-console.log("Hello World!")
+console.log("Hello World!");
 ```
 
 ## Go

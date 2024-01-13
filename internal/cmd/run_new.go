@@ -35,25 +35,33 @@ func runNewCmd() *cobra.Command {
 			}
 			defer logger.Sync()
 
-			commandOptions := &command.CommandOptions{
-				// Tty:    true,
-				Stdin:  os.Stdin, // TODO: change back to cmd.InOrStdin()
-				Stdout: cmd.OutOrStdout(),
-				Stderr: cmd.ErrOrStderr(),
-				Logger: logger,
-			}
-
-			cmdFromTask, err := command.CommandFromCodeBlock(tasks[0].CodeBlock, commandOptions)
+			dir, err := os.Getwd()
 			if err != nil {
 				return err
 			}
 
-			err = cmdFromTask.Start(cmd.Context())
+			localOptions := &command.LocalOptions{
+				ParentDir: dir,
+				Stdin:     cmd.InOrStdin(),
+				Stdout:    cmd.OutOrStdout(),
+				Stderr:    cmd.ErrOrStderr(),
+				Logger:    logger,
+			}
+
+			localCmd, err := command.NewLocal(
+				tasks[0].CodeBlock,
+				localOptions,
+			)
 			if err != nil {
 				return err
 			}
 
-			return cmdFromTask.Wait()
+			err = localCmd.Start(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			return localCmd.Wait()
 		},
 	}
 

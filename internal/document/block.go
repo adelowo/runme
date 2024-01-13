@@ -10,6 +10,7 @@ import (
 
 	"github.com/stateful/runme/internal/document/identity"
 	"github.com/stateful/runme/internal/executable"
+	"github.com/stateful/runme/internal/feature"
 	"github.com/stateful/runme/internal/shell"
 	"github.com/yuin/goldmark/ast"
 )
@@ -133,9 +134,8 @@ func (b *CodeBlock) Document() *Document { return b.document }
 func (b *CodeBlock) Interactive() bool {
 	val, err := strconv.ParseBool(b.Attributes()["interactive"])
 	if err != nil {
-		return true
+		return feature.DOCUMENT_CODE_BLOCK_DEFAULT_INTERACTIVE
 	}
-
 	return val
 }
 

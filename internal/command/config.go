@@ -9,6 +9,96 @@ import (
 	"github.com/stateful/runme/internal/document"
 )
 
+type Config struct {
+	Name string
+	Dirs []string
+	Path string
+	Args []string
+}
+
+type ConfigBuilder interface {
+	Build() (*Config, error)
+}
+
+func NewConfigBuilder(block *document.CodeBlock) ConfigBuilder {
+	base := &baseConfigBuilder{
+		block: block,
+	}
+
+	switch {
+	case isShellLanguage(block.Language()):
+		return &inlineShellConfigBuilder{
+			baseConfigBuilder: base,
+		}
+
+	default:
+		return &fileConfigBuilder{
+			baseConfigBuilder: base,
+		}
+	}
+}
+
+type baseConfigBuilder struct {
+	block *document.CodeBlock
+}
+
+func (b *baseConfigBuilder) Build() (*Config, error) {
+	var dirs []string
+
+	fmtr, err := b.block.Document().Frontmatter()
+	if err == nil && fmtr != nil && fmtr.Cwd != "" {
+		dirs = append(dirs, fmtr.Cwd)
+	}
+
+	if dir := b.block.Cwd(); dir != "" {
+		dirs = append(dirs, dir)
+	}
+
+	path, args, err := programPathAndArgsFromCodeBlock(b.block)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := &Config{
+		Name: b.block.Name(),
+		Dirs: dirs,
+		Path: path,
+		Args: args,
+	}
+
+	return cfg, nil
+}
+
+type inlineShellConfigBuilder struct {
+	*baseConfigBuilder
+}
+
+func (b *inlineShellConfigBuilder) Build() (*Config, error) {
+	cfg, err := b.baseConfigBuilder.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO(adamb): this seems to be completely unnecessary.
+	// if b.block.Interactive() {
+	// 	cfg.Args = append(cfg.Args, "-i")
+	// }
+
+	if script := prepareScript(b.block, cfg.Path); script != "" {
+		cfg.Args = append(cfg.Args, "-c", script)
+	}
+
+	return cfg, nil
+}
+
+type fileConfigBuilder struct {
+	*baseConfigBuilder
+}
+
+func (b *fileConfigBuilder) Build() (*Config, error) {
+	return b.baseConfigBuilder.Build()
+}
+
 type ErrInvalidLanguage struct {
 	langID string
 }
