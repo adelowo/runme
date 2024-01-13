@@ -66,10 +66,11 @@ class ExecuteRequest$Type extends MessageType {
             { no: 8, name: "block_id", kind: "scalar", oneof: "block", T: 9 /*ScalarType.STRING*/ },
             { no: 9, name: "block_name", kind: "scalar", oneof: "block", T: 9 /*ScalarType.STRING*/ },
             { no: 3, name: "directory", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
-            { no: 4, name: "envs", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ },
+            { no: 4, name: "env", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ },
             { no: 5, name: "input_data", kind: "scalar", T: 12 /*ScalarType.BYTES*/ },
             { no: 6, name: "stop", kind: "enum", T: () => ["runme.runner.v2alpha1.ExecuteStop", ExecuteStop, "EXECUTE_STOP_"] },
-            { no: 7, name: "winsize", kind: "message", T: () => Winsize }
+            { no: 7, name: "winsize", kind: "message", T: () => Winsize },
+            { no: 10, name: "interactive", kind: "scalar", T: 8 /*ScalarType.BOOL*/ }
         ]);
     }
 }

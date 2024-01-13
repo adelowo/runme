@@ -1,6 +1,7 @@
 package runnerv2alpha1
 
 import (
+	"context"
 	"io"
 	"os"
 	"os/exec"
@@ -55,6 +56,75 @@ func newRunnerService(logger *zap.Logger) (*runnerService, error) {
 	}, nil
 }
 
+func (r *runnerService) stopCommand(
+	req *runnerv2alpha1.ExecuteRequest,
+	cmd command.Command,
+) error {
+	if req.Stop == runnerv2alpha1.ExecuteStop_EXECUTE_STOP_UNSPECIFIED {
+		return nil
+	}
+
+	switch req.Stop {
+	case runnerv2alpha1.ExecuteStop_EXECUTE_STOP_INTERRUPT:
+		return cmd.StopWithSignal(os.Interrupt)
+	case runnerv2alpha1.ExecuteStop_EXECUTE_STOP_KILL:
+		return cmd.StopWithSignal(os.Kill)
+	default:
+		return errors.New("unknown stop signal")
+	}
+}
+
+func (r *runnerService) receiveLoop(
+	srv runnerv2alpha1.RunnerService_ExecuteServer,
+	cmd command.Command,
+	stdinWriter io.WriteCloser,
+	logger *zap.Logger,
+) error {
+	for {
+		req, err := srv.Recv()
+		if err == io.EOF {
+			logger.Info("client closed the send direction; ignoring")
+			return nil
+		}
+		if err != nil && status.Convert(err).Code() == codes.Canceled {
+			if !cmd.IsRunning() {
+				logger.Info("stream canceled after the process finished; ignoring")
+			} else {
+				logger.Info("stream canceled while the process is still running; program will be stopped if non-background")
+			}
+			return nil
+		}
+		if err != nil {
+			logger.Info("error while receiving a request; stopping the program", zap.Error(err))
+			if err := cmd.StopWithSignal(os.Kill); err != nil {
+				logger.Info("failed to stop program", zap.Error(err))
+			}
+			return err
+		}
+
+		if err := r.stopCommand(req, cmd); err != nil {
+			logger.Info("failed to stop the command", zap.Error(err))
+			return err
+		}
+
+		if len(req.InputData) != 0 {
+			logger.Debug("received input data", zap.Int("len", len(req.InputData)))
+			_, err = stdinWriter.Write(req.InputData)
+			if err != nil {
+				logger.Info("failed to write to stdin", zap.Error(err))
+				return err
+			}
+		}
+
+		// only update winsize when field is explicitly set
+		// if req.ProtoReflect().Has(
+		// 	req.ProtoReflect().Descriptor().Fields().ByName("winsize"),
+		// ) {
+		// 	cmd.setWinsize(runnerWinsizeToPty(req.Winsize))
+		// }
+	}
+}
+
 func (r *runnerService) Execute(srv runnerv2alpha1.RunnerService_ExecuteServer) error {
 	logger := r.logger.With(zap.String("_id", ulid.GenerateID()))
 
@@ -71,62 +141,24 @@ func (r *runnerService) Execute(srv runnerv2alpha1.RunnerService_ExecuteServer) 
 		return errors.WithStack(err)
 	}
 
-	logger.Debug("received initial request", zap.Any("req", req))
+	logger.Info("received initial request", zap.Any("req", req))
 
-	idResolver := identity.NewResolver(identity.DefaultLifecycleIdentity)
+	ctx := srv.Context()
 
-	var block *document.CodeBlock
-
-	if req.Project != nil {
-		opts := []project.ProjectOption{
-			project.WithIdentityResolver(idResolver),
-			project.WithFindRepoUpward(),
-			project.WithRespectGitignore(),
-			project.WithEnvFilesReadOrder(req.Project.EnvLoadOrder),
-			project.WithLogger(logger),
-		}
-
-		proj, err := project.NewDirProject(
-			req.Project.Root,
-			opts...,
-		)
-		if err != nil {
-			return err
-		}
-
-		tasks, err := project.LoadTasks(srv.Context(), proj)
-		if err != nil {
-			return err
-		}
-
-		tasks, err = project.FilterTasksByFileAndTaskName(tasks, req.DocumentPath, req.GetBlockName())
-		if err != nil {
-			return err
-		}
-
-		block = tasks[0].CodeBlock
-	} else if req.DocumentPath != "" {
-		path := req.DocumentPath
-
-		if !filepath.IsAbs(req.DocumentPath) {
-			path = filepath.Join(req.Directory, req.DocumentPath)
-		}
-
-		source, err := os.ReadFile(path)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-
-		doc := document.New(source, idResolver)
-		node, err := doc.Root()
-		if err != nil {
-			return err
-		}
-
-		block = document.CollectCodeBlocks(node).Lookup(req.GetBlockName())
+	block, err := getCodeBlockFromRequest(ctx, req, logger)
+	if err != nil {
+		return err
 	}
 
-	stdin, stdinWriter := io.Pipe()
+	var (
+		stdin       io.Reader
+		stdinWriter io.WriteCloser
+	)
+
+	if req.Interactive {
+		stdin, stdinWriter = io.Pipe()
+	}
+
 	stdout := rbuffer.NewRingBuffer(ringBufferSize)
 	stderr := rbuffer.NewRingBuffer(ringBufferSize)
 	// Close buffers so that the readers will be notified about EOF.
@@ -145,7 +177,7 @@ func (r *runnerService) Execute(srv runnerv2alpha1.RunnerService_ExecuteServer) 
 		return err
 	}
 
-	if err := cmd.Start(srv.Context()); err != nil {
+	if err := cmd.Start(ctx); err != nil {
 		return err
 	}
 
@@ -157,84 +189,19 @@ func (r *runnerService) Execute(srv runnerv2alpha1.RunnerService_ExecuteServer) 
 		return err
 	}
 
+	// Write initial input data.
+	if len(req.InputData) > 0 {
+		if _, err := stdinWriter.Write(req.InputData); err != nil {
+			logger.Info("failed to write initial input to stdin", zap.Error(err))
+			return err
+		}
+	}
+
 	// This goroutine will be closed when the handler exits or earlier.
 	go func() {
-		defer func() { _ = stdinWriter.Close() }()
-
-		if len(req.InputData) > 0 {
-			if _, err := stdinWriter.Write(req.InputData); err != nil {
-				logger.Info("failed to write initial input to stdin", zap.Error(err))
-				// TODO(adamb): we likely should communicate it to the client.
-				// Then, the client could decide what to do.
-				return
-			}
-		}
-
-		// When TTY is false, it means that the command is run in non-interactive mode and
-		// there will be no more input data.
-		// if !req.Tty {
-		// 	_ = stdinWriter.Close() // it's ok to close it multiple times
-		// }
-
-		for {
-			req, err := srv.Recv()
-			if err == io.EOF {
-				logger.Info("client closed the send direction; ignoring")
-				return
-			}
-			if err != nil && status.Convert(err).Code() == codes.Canceled {
-				if !cmd.IsRunning() {
-					logger.Info("stream canceled after the process finished; ignoring")
-				} else {
-					logger.Info("stream canceled while the process is still running; program will be stopped if non-background")
-				}
-				return
-			}
-			if err != nil {
-				logger.Info("error while receiving a request; stopping the program", zap.Error(err))
-				err := cmd.StopWithSignal(os.Kill)
-				if err != nil {
-					logger.Info("failed to stop program", zap.Error(err))
-				}
-				return
-			}
-
-			if req.Stop != runnerv2alpha1.ExecuteStop_EXECUTE_STOP_UNSPECIFIED {
-				logger.Info("requested the program to stop")
-
-				var err error
-
-				switch req.Stop {
-				case runnerv2alpha1.ExecuteStop_EXECUTE_STOP_INTERRUPT:
-					err = cmd.StopWithSignal(os.Interrupt)
-				case runnerv2alpha1.ExecuteStop_EXECUTE_STOP_KILL:
-					err = cmd.StopWithSignal(os.Kill)
-				}
-
-				if err != nil {
-					logger.Info("failed to stop program on request", zap.Error(err), zap.Any("signal", req.Stop))
-				}
-
-				return
-			}
-
-			if len(req.InputData) != 0 {
-				logger.Debug("received input data", zap.Int("len", len(req.InputData)))
-				_, err = stdinWriter.Write(req.InputData)
-				if err != nil {
-					logger.Info("failed to write to stdin", zap.Error(err))
-					// TODO(adamb): we likely should communicate it to the client.
-					// Then, the client could decide what to do.
-					return
-				}
-			}
-
-			// only update winsize when field is explicitly set
-			// if req.ProtoReflect().Has(
-			// 	req.ProtoReflect().Descriptor().Fields().ByName("winsize"),
-			// ) {
-			// 	cmd.setWinsize(runnerWinsizeToPty(req.Winsize))
-			// }
+		err := r.receiveLoop(srv, cmd, stdinWriter, logger)
+		if err != nil {
+			logger.Info("receiveLoop exited with error", zap.Error(err))
 		}
 	}()
 
@@ -272,7 +239,9 @@ func (r *runnerService) Execute(srv runnerv2alpha1.RunnerService_ExecuteServer) 
 
 	// Close the stdinWriter so that the loops in the `cmd` will finish.
 	// The problem occurs only with TTY.
-	_ = stdinWriter.Close()
+	if stdinWriter != nil {
+		_ = stdinWriter.Close()
+	}
 
 	logger.Info("command was finalized successfully")
 
@@ -305,25 +274,77 @@ func (r *runnerService) Execute(srv runnerv2alpha1.RunnerService_ExecuteServer) 
 	return werr
 }
 
+func getCodeBlockFromRequest(ctx context.Context, req *runnerv2alpha1.ExecuteRequest, logger *zap.Logger) (*document.CodeBlock, error) {
+	var proj *project.Project
+
+	if req.Project != nil {
+		var err error
+		proj, err = getProjectFromRequestProject(req.Project, logger)
+		if err != nil {
+			return nil, err
+		}
+	} else if path := req.DocumentPath; path != "" {
+		if !filepath.IsAbs(req.DocumentPath) {
+			path = filepath.Join(req.Directory, req.DocumentPath)
+		}
+
+		var err error
+		proj, err = getProjectFromRequestFile(path, logger)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	tasks, err := project.LoadTasks(ctx, proj)
+	if err != nil {
+		return nil, err
+	}
+
+	tasks, err = project.FilterTasksByFileAndTaskName(tasks, req.DocumentPath, req.GetBlockName())
+	if err != nil {
+		return nil, err
+	}
+
+	switch len(tasks) {
+	case 0:
+		return nil, errors.New("no tasks found")
+	case 1:
+		return tasks[0].CodeBlock, nil
+	default:
+		return nil, errors.New("multiple tasks found")
+	}
+}
+
+func getProjectFromRequestProject(reqProj *runnerv2alpha1.Project, logger *zap.Logger) (*project.Project, error) {
+	idResolver := identity.NewResolver(identity.DefaultLifecycleIdentity)
+
+	opts := []project.ProjectOption{
+		project.WithIdentityResolver(idResolver),
+		project.WithFindRepoUpward(),
+		project.WithRespectGitignore(),
+		project.WithEnvFilesReadOrder(reqProj.EnvLoadOrder),
+		project.WithLogger(logger),
+	}
+
+	return project.NewDirProject(
+		reqProj.Root,
+		opts...,
+	)
+}
+
+func getProjectFromRequestFile(path string, logger *zap.Logger) (*project.Project, error) {
+	idResolver := identity.NewResolver(identity.DefaultLifecycleIdentity)
+
+	return project.NewFileProject(
+		path,
+		project.WithIdentityResolver(idResolver),
+		project.WithLogger(logger),
+	)
+}
+
 type output struct {
 	Stdout []byte
 	Stderr []byte
-}
-
-func (o output) Clone() (result output) {
-	if len(o.Stdout) == 0 {
-		result.Stdout = nil
-	} else {
-		result.Stdout = make([]byte, len(o.Stdout))
-		copy(result.Stdout, o.Stdout)
-	}
-	if len(o.Stderr) == 0 {
-		result.Stderr = nil
-	} else {
-		result.Stderr = make([]byte, len(o.Stderr))
-		copy(result.Stderr, o.Stderr)
-	}
-	return
 }
 
 // readLoop uses two sets of buffers in order to avoid allocating

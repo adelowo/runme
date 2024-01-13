@@ -53,16 +53,17 @@ export interface Winsize {
     y: number;
 }
 /**
+ * document_path is a path to the document which contains
+ * the cell to execute.
+ *
+ * If project is set, document_path should be relative to the project root.
+ * Otherwise, it should be an absolute path.
+ *
  * @generated from protobuf message runme.runner.v2alpha1.ExecuteRequest
  */
 export interface ExecuteRequest {
     /**
-     * document_path is a path to the document which contains
-     * the cell to execute.
-     *
-     * If project is set, document_path is relative to the project root,
-     * otherwise, it should be an absolute path. If it's a relative path,
-     * directory is used as a base.
+     * If it's a relative path and project is not set, directory is used as a base.
      *
      * @generated from protobuf field: string document_path = 1;
      */
@@ -92,18 +93,20 @@ export interface ExecuteRequest {
         oneofKind: undefined;
     };
     /**
-     * directory to execute the program in.
+     * directory to execute the program in. If not set,
+     * the current working directory is used.
      *
      * @generated from protobuf field: string directory = 3;
      */
     directory: string;
     /**
-     * envs is a list of additional environment variables
+     * env is a list of additional environment variables
      * that will be injected to the executed program.
+     * They will override any env from the project.
      *
-     * @generated from protobuf field: repeated string envs = 4;
+     * @generated from protobuf field: repeated string env = 4;
      */
-    envs: string[];
+    env: string[];
     /**
      * input_data is a byte array that will be send as input
      * to the program.
@@ -125,6 +128,14 @@ export interface ExecuteRequest {
      * @generated from protobuf field: optional runme.runner.v2alpha1.Winsize winsize = 7;
      */
     winsize?: Winsize;
+    /**
+     * interactive, if true, will allow to process input_data.
+     * When no more data is expected, EOT (0x04) character
+     * must be sent in input_data.
+     *
+     * @generated from protobuf field: bool interactive = 10;
+     */
+    interactive: boolean;
 }
 /**
  * @generated from protobuf message runme.runner.v2alpha1.ProcessPID

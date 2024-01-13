@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"reflect"
 	"sync"
 	"syscall"
 
@@ -75,7 +76,7 @@ func (c *virtualCommand) Start(ctx context.Context) error {
 
 	setSysProcAttrCtty(c.cmd)
 
-	if c.opts.Stdin != nil {
+	if !isNil(c.opts.Stdin) {
 		c.wg.Add(1)
 		go func() {
 			defer c.wg.Done()
@@ -89,7 +90,7 @@ func (c *virtualCommand) Start(ctx context.Context) error {
 		}()
 	}
 
-	if c.opts.Stdout != nil {
+	if !isNil(c.opts.Stdout) {
 		c.wg.Add(1)
 		go func() {
 			defer c.wg.Done()
@@ -175,4 +176,8 @@ func (c *virtualCommand) setErr(err error) {
 		c.err = err
 	}
 	c.mx.Unlock()
+}
+
+func isNil(val interface{}) bool {
+	return val == nil || reflect.ValueOf(val).IsNil()
 }

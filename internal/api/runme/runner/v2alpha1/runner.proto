@@ -36,25 +36,29 @@ message ExecuteRequest {
   // document_path is a path to the document which contains
   // the cell to execute.
   //
-  // If project is set, document_path is relative to the project root,
-  // otherwise, it should be an absolute path. If it's a relative path,
-  // directory is used as a base.
+  // If project is set, document_path should be relative to the project root.
+  // Otherwise, it should be an absolute path.
+
+  // If it's a relative path and project is not set, directory is used as a base.
   string document_path = 1;
 
   // project represents a project in which the document is located.
   optional Project project = 2;
 
+  // block is either an ID or a name of the block to execute from the document.
   oneof block {
     string block_id = 8;
     string block_name = 9;
   }
 
-  // directory to execute the program in.
+  // directory to execute the program in. If not set,
+  // the current working directory is used.
   string directory = 3;
 
-  // envs is a list of additional environment variables
+  // env is a list of additional environment variables
   // that will be injected to the executed program.
-  repeated string envs = 4;
+  // They will override any env from the project.
+  repeated string env = 4;
 
   // input_data is a byte array that will be send as input
   // to the program.
@@ -67,6 +71,11 @@ message ExecuteRequest {
   // sets pty winsize
   // has no effect in non-interactive mode
   optional Winsize winsize = 7;
+
+  // interactive, if true, will allow to process input_data.
+  // When no more data is expected, EOT (0x04) character
+  // must be sent in input_data.
+  bool interactive = 10;
 }
 
 message ProcessPID {

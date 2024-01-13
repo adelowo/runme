@@ -7,6 +7,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,13 +19,6 @@ import (
 
 	runnerv2alpha1 "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v2alpha1"
 )
-
-func testCreateLogger(t *testing.T) *zap.Logger {
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Sync() })
-	return logger
-}
 
 func testStartRunnerServiceServer(t *testing.T) (
 	interface{ Dial() (net.Conn, error) },
@@ -88,13 +82,36 @@ func getExecuteResult(
 	resultc <- result
 }
 
-func Test_runnerService(t *testing.T) {
+func TestRunnerServiceServer(t *testing.T) {
 	t.Parallel()
 
 	lis, stop := testStartRunnerServiceServer(t)
 	t.Cleanup(stop)
 	_, client := testCreateRunnerServiceClient(t, lis)
 
+	tmpDir := t.TempDir()
+	err := os.WriteFile(tmpDir+"/test.md", []byte("```sh {\"name\":\"echo\"}\necho -n test\n```"), 0o644)
+	require.NoError(t, err)
+
+	stream, err := client.Execute(context.Background())
+	require.NoError(t, err)
+
+	execResult := make(chan executeResult)
+	go getExecuteResult(stream, execResult)
+
+	err = stream.Send(&runnerv2alpha1.ExecuteRequest{
+		DocumentPath: tmpDir + "/test.md",
+		Block: &runnerv2alpha1.ExecuteRequest_BlockName{
+			BlockName: "echo",
+		},
+	})
+	assert.NoError(t, err)
+
+	result := <-execResult
+
+	assert.NoError(t, result.Err)
+	assert.Equal(t, "test", string(result.Stdout))
+	assert.EqualValues(t, 0, result.ExitCode)
 }
 
 func Test_readLoop(t *testing.T) {
