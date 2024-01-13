@@ -48,16 +48,11 @@ type execution struct {
 func newExecution(
 	ctx context.Context,
 	id string,
-	protoProgramConfig *runnerv2alpha1.ProgramConfig,
+	cfg *command.Config,
 	initialInputData []byte,
 	project *project.Project,
 	logger *zap.Logger,
 ) (*execution, error) {
-	cfg, err := newConfigFromProtoProgramConfig(protoProgramConfig)
-	if err != nil {
-		return nil, err
-	}
-
 	var (
 		stdin       io.Reader
 		stdinWriter io.WriteCloser
@@ -69,7 +64,7 @@ func newExecution(
 
 	stdout := rbuffer.NewRingBuffer(ringBufferSize)
 
-	cmd, err := command.NewVirtualFromConfig(
+	cmd, err := command.NewVirtual(
 		cfg,
 		&command.VirtualCommandOptions{
 			Stdin:  stdin,

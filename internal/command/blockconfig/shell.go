@@ -1,4 +1,4 @@
-package command
+package blockconfig
 
 import (
 	"path/filepath"
@@ -34,7 +34,7 @@ func isShellLanguage(languageID string) bool {
 func prepareScriptFromLines(programPath string, lines []string) string {
 	var buf strings.Builder
 
-	_, _ = buf.WriteString(shellOptionsFromProgram(programPath) + ";")
+	_, _ = buf.WriteString(shellOptionsFromProgram(programPath) + "\n\n")
 
 	for _, cmd := range lines {
 		_, _ = buf.WriteString(cmd)

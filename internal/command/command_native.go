@@ -8,6 +8,8 @@ import (
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
+
+	runnerv2alpha1 "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v2alpha1"
 )
 
 type NativeCommand struct {
@@ -17,6 +19,8 @@ type NativeCommand struct {
 	// cmd is populated when the command is started.
 	cmd *exec.Cmd
 
+	tempFile *os.File
+
 	logger *zap.Logger
 }
 
@@ -24,11 +28,36 @@ func newNativeCommand(cfg *Config, opts *NativeCommandOptions) *NativeCommand {
 	return &NativeCommand{
 		cfg:    cfg,
 		opts:   opts,
-		logger: opts.Logger.With(zap.String("name", cfg.Name)),
+		logger: opts.Logger,
 	}
 }
 
-func (c *NativeCommand) Start(ctx context.Context) error {
+func (c *NativeCommand) Start(ctx context.Context) (err error) {
+	switch c.cfg.Mode {
+	case *runnerv2alpha1.CommandMode_COMMAND_MODE_UNSPECIFIED.Enum():
+		fallthrough
+	case *runnerv2alpha1.CommandMode_COMMAND_MODE_INLINE.Enum():
+		// no additional setup
+	case *runnerv2alpha1.CommandMode_COMMAND_MODE_FILE.Enum():
+		f, err := os.CreateTemp("", "runme-script-*")
+		if err != nil {
+			return errors.WithMessage(err, "failed to create a temporary file for script execution")
+		}
+		c.tempFile = f
+
+		if _, err := f.Write([]byte(c.cfg.GetScript())); err != nil {
+			return errors.WithMessage(err, "failed to write the script to the temporary file")
+		}
+
+		_ = f.Close()
+
+		defer func() {
+			if err != nil {
+				_ = c.cleanup()
+			}
+		}()
+	}
+
 	stdin := c.opts.Stdin
 
 	if f, ok := stdin.(*os.File); ok && f != nil {
@@ -49,12 +78,18 @@ func (c *NativeCommand) Start(ctx context.Context) error {
 		stdin = os.NewFile(uintptr(newStdinFd), "")
 	}
 
+	// TODO(adamb): this should not work this way...
+	args := append([]string{}, c.cfg.Arguments...)
+	if c.tempFile != nil {
+		args = append(args, c.tempFile.Name())
+	}
+
 	c.cmd = exec.CommandContext(
 		ctx,
-		c.cfg.ProgramPath,
-		c.cfg.Args...,
+		c.cfg.ProgramName,
+		args...,
 	)
-	c.cmd.Dir = c.cfg.Dir
+	c.cmd.Dir = c.cfg.Directory
 	c.cmd.Env = c.opts.Env
 	c.cmd.Stdin = stdin
 	c.cmd.Stdout = c.opts.Stdout
@@ -69,7 +104,7 @@ func (c *NativeCommand) Start(ctx context.Context) error {
 	// like "python", hence, it's commented out.
 	// setSysProcAttrPgid(c.cmd)
 
-	c.logger.Info("starting a local command", zap.String("program", c.cfg.ProgramPath), zap.Strings("args", c.cfg.Args))
+	c.logger.Info("starting a local command", zap.String("program", c.cfg.ProgramName), zap.Strings("args", args))
 
 	if err := c.cmd.Start(); err != nil {
 		return errors.WithStack(err)
@@ -95,6 +130,8 @@ func (c *NativeCommand) StopWithSignal(sig os.Signal) error {
 func (c *NativeCommand) Wait() error {
 	c.logger.Info("waiting for the local command to finish")
 
+	defer func() { _ = c.cleanup() }()
+
 	var stderr []byte
 
 	err := c.cmd.Wait()
@@ -108,4 +145,11 @@ func (c *NativeCommand) Wait() error {
 	c.logger.Info("the local command finished", zap.Error(err), zap.ByteString("stderr", stderr))
 
 	return errors.WithStack(err)
+}
+
+func (c *NativeCommand) cleanup() error {
+	if c.tempFile == nil {
+		return nil
+	}
+	return os.Remove(c.tempFile.Name())
 }

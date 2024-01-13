@@ -11,6 +11,7 @@
 import { ServiceType } from "@protobuf-ts/runtime-rpc";
 import { MessageType } from "@protobuf-ts/runtime";
 import { UInt32Value } from "../../../google/protobuf/wrappers_pb";
+import { ProgramConfig } from "./config_pb";
 /**
  * @generated from protobuf enum runme.runner.v2alpha1.ExecuteStop
  */
@@ -29,24 +30,6 @@ export var ExecuteStop;
      */
     ExecuteStop[ExecuteStop["KILL"] = 2] = "KILL";
 })(ExecuteStop || (ExecuteStop = {}));
-/**
- * @generated from protobuf enum runme.runner.v2alpha1.CommandMode
- */
-export var CommandMode;
-(function (CommandMode) {
-    /**
-     * @generated from protobuf enum value: COMMAND_MODE_UNSPECIFIED = 0;
-     */
-    CommandMode[CommandMode["UNSPECIFIED"] = 0] = "UNSPECIFIED";
-    /**
-     * @generated from protobuf enum value: COMMAND_MODE_INLINE_SHELL = 1;
-     */
-    CommandMode[CommandMode["INLINE_SHELL"] = 1] = "INLINE_SHELL";
-    /**
-     * @generated from protobuf enum value: COMMAND_MODE_TEMP_FILE = 2;
-     */
-    CommandMode[CommandMode["TEMP_FILE"] = 2] = "TEMP_FILE";
-})(CommandMode || (CommandMode = {}));
 /**
  * SessionStrategy determines a session selection in
  * an initial execute request.
@@ -207,36 +190,6 @@ class Winsize$Type extends MessageType {
  */
 export const Winsize = new Winsize$Type();
 // @generated message type with reflection information, may provide speed optimized methods
-class CommandList$Type extends MessageType {
-    constructor() {
-        super("runme.runner.v2alpha1.CommandList", [
-            { no: 1, name: "commands", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ }
-        ]);
-    }
-}
-/**
- * @generated MessageType for protobuf message runme.runner.v2alpha1.CommandList
- */
-export const CommandList = new CommandList$Type();
-// @generated message type with reflection information, may provide speed optimized methods
-class ProgramConfig$Type extends MessageType {
-    constructor() {
-        super("runme.runner.v2alpha1.ProgramConfig", [
-            { no: 1, name: "program_name", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
-            { no: 2, name: "arguments", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ },
-            { no: 3, name: "directory", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
-            { no: 4, name: "env", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ },
-            { no: 5, name: "commands", kind: "message", oneof: "source", T: () => CommandList },
-            { no: 6, name: "script", kind: "scalar", oneof: "source", T: 9 /*ScalarType.STRING*/ },
-            { no: 7, name: "interactive", kind: "scalar", T: 8 /*ScalarType.BOOL*/ }
-        ]);
-    }
-}
-/**
- * @generated MessageType for protobuf message runme.runner.v2alpha1.ProgramConfig
- */
-export const ProgramConfig = new ProgramConfig$Type();
-// @generated message type with reflection information, may provide speed optimized methods
 class ExecuteRequest$Type extends MessageType {
     constructor() {
         super("runme.runner.v2alpha1.ExecuteRequest", [
@@ -249,7 +202,6 @@ class ExecuteRequest$Type extends MessageType {
             { no: 21, name: "session_strategy", kind: "enum", T: () => ["runme.runner.v2alpha1.SessionStrategy", SessionStrategy, "SESSION_STRATEGY_"] },
             { no: 22, name: "project", kind: "message", T: () => Project },
             { no: 23, name: "store_last_output", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
-            { no: 24, name: "command_mode", kind: "enum", T: () => ["runme.runner.v2alpha1.CommandMode", CommandMode, "COMMAND_MODE_"] },
             { no: 25, name: "language_id", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
             { no: 26, name: "file_extension", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
         ]);

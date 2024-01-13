@@ -47,8 +47,8 @@ func TestRunnerServiceServerExecute(t *testing.T) {
 			programConfig: &runnerv2alpha1.ProgramConfig{
 				ProgramName: "bash",
 				Source: &runnerv2alpha1.ProgramConfig_Commands{
-					Commands: &runnerv2alpha1.CommandList{
-						Commands: []string{
+					Commands: &runnerv2alpha1.ProgramConfig_CommandList{
+						Items: []string{
 							"echo -n test",
 						},
 					},

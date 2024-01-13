@@ -12,6 +12,8 @@ import (
 	"github.com/creack/pty"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
+
+	runnerv2alpha1 "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v2alpha1"
 )
 
 type VirtualCommand struct {
@@ -23,6 +25,8 @@ type VirtualCommand struct {
 
 	// stdin is Opts.Stdin wrapped in readCloser.
 	stdin io.ReadCloser
+
+	tempFile *os.File
 
 	pty *os.File
 	tty *os.File
@@ -74,11 +78,15 @@ func newVirtualCommand(cfg *Config, opts *VirtualCommandOptions) *VirtualCommand
 		stdin = &readCloser{r: opts.Stdin, done: make(chan struct{})}
 	}
 
+	if opts.Stdout == nil {
+		opts.Stdout = io.Discard
+	}
+
 	return &VirtualCommand{
 		cfg:    cfg,
 		opts:   opts,
 		stdin:  stdin,
-		logger: opts.Logger.With(zap.String("name", cfg.Name)),
+		logger: opts.Logger,
 	}
 }
 
@@ -107,8 +115,31 @@ func (c *VirtualCommand) SetWinsize(rows, cols, x, y uint16) (err error) {
 	return errors.WithStack(err)
 }
 
-func (c *VirtualCommand) Start(ctx context.Context) error {
-	var err error
+func (c *VirtualCommand) Start(ctx context.Context) (err error) {
+	switch c.cfg.Mode {
+	case *runnerv2alpha1.CommandMode_COMMAND_MODE_UNSPECIFIED.Enum():
+		fallthrough
+	case *runnerv2alpha1.CommandMode_COMMAND_MODE_INLINE.Enum():
+		// no additional setup
+	case *runnerv2alpha1.CommandMode_COMMAND_MODE_FILE.Enum():
+		f, err := os.CreateTemp("", "runme-script-*")
+		if err != nil {
+			return errors.WithMessage(err, "failed to create a temporary file for script execution")
+		}
+		c.tempFile = f
+
+		if _, err := f.Write([]byte(c.cfg.GetScript())); err != nil {
+			return errors.WithMessage(err, "failed to write the script to the temporary file")
+		}
+
+		_ = f.Close()
+
+		defer func() {
+			if err != nil {
+				_ = c.cleanup()
+			}
+		}()
+	}
 
 	c.pty, c.tty, err = pty.Open()
 	if err != nil {
@@ -119,13 +150,20 @@ func (c *VirtualCommand) Start(ctx context.Context) error {
 		return err
 	}
 
+	// TODO(adamb): this should not work this way...
+	args := append([]string{}, c.cfg.Arguments...)
+	if c.tempFile != nil {
+		args = append(args, c.tempFile.Name())
+	}
+
 	c.cmd = exec.CommandContext(
 		ctx,
-		c.cfg.ProgramPath,
-		c.cfg.Args...,
+		c.cfg.ProgramName,
+		args...,
 	)
-	c.cmd.Dir = c.cfg.Dir
-	c.cmd.Env = c.opts.Env
+	c.cmd.Dir = c.cfg.Directory
+	// TODO(adamb): verify the order
+	c.cmd.Env = append(append([]string{}, c.opts.Env...), c.cfg.Env...)
 	c.cmd.Stdin = c.tty
 	c.cmd.Stdout = c.tty
 	c.cmd.Stderr = c.tty
@@ -171,7 +209,7 @@ func (c *VirtualCommand) Start(ctx context.Context) error {
 		}()
 	}
 
-	c.logger.Info("starting a virtual command", zap.String("program", c.cfg.ProgramPath), zap.Strings("args", c.cfg.Args))
+	c.logger.Info("starting a virtual command", zap.String("program", c.cfg.ProgramName), zap.Strings("args", args))
 
 	if err := c.cmd.Start(); err != nil {
 		return errors.WithStack(err)
@@ -211,6 +249,8 @@ func (c *VirtualCommand) StopWithSignal(sig os.Signal) error {
 func (c *VirtualCommand) Wait() error {
 	c.logger.Info("waiting for the virtual command to finish")
 
+	defer func() { _ = c.cleanup() }()
+
 	waitErr := c.cmd.Wait()
 	c.logger.Info("the virtual command finished", zap.Error(waitErr))
 
@@ -247,6 +287,23 @@ func (c *VirtualCommand) setErr(err error) {
 	c.mx.Unlock()
 }
 
+func (c *VirtualCommand) cleanup() error {
+	if c.tempFile == nil {
+		return nil
+	}
+	return os.Remove(c.tempFile.Name())
+}
+
 func isNil(val any) bool {
-	return val == nil || reflect.ValueOf(val).IsNil()
+	if val == nil {
+		return true
+	}
+
+	v := reflect.ValueOf(val)
+
+	if v.Type().Kind() == reflect.Struct {
+		return false
+	}
+
+	return reflect.ValueOf(val).IsNil()
 }

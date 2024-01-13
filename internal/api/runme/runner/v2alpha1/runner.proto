@@ -3,6 +3,7 @@ syntax = "proto3";
 package runme.runner.v2alpha1;
 
 import "google/protobuf/wrappers.proto";
+import "runme/runner/v2alpha1/config.proto";
 
 option go_package = "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v1;runnerv1";
 
@@ -73,12 +74,6 @@ enum ExecuteStop {
   EXECUTE_STOP_KILL = 2;
 }
 
-enum CommandMode {
-  COMMAND_MODE_UNSPECIFIED = 0;
-  COMMAND_MODE_INLINE_SHELL = 1;
-  COMMAND_MODE_TEMP_FILE = 2;
-}
-
 // SessionStrategy determines a session selection in
 // an initial execute request.
 enum SessionStrategy {
@@ -97,48 +92,8 @@ message Winsize {
   uint32 y = 4;
 }
 
-message CommandList {
-  // commands are commands to be executed by the program.
-  // The commands are joined and executed as a script.
-  // For example: ["echo 'Hello, World'", "ls -l /etc"].
-  repeated string commands = 1;
-}
-
-// ProgramConfig is a configuration for a program to execute.
-// From this configuration, any program can be built.
-message ProgramConfig {
-  // program_name is a name of the program to execute.
-  // If it's not a path (relative or absolute), the runner
-  // will try to resolve the name.
-  // For example: "sh", "/bin/bash".
-  string program_name = 1;
-
-  // arguments is a list of arguments passed to the program.
-  repeated string arguments = 2;
-
-  // directory to execute the program in.
-  string directory = 3;
-
-  // env is a list of additional environment variables
-  // that will be injected to the executed program.
-  repeated string env = 4;
-
-  oneof source {
-    // commands are commands to be executed by the program.
-    // The commands are joined and executed as a script.
-    CommandList commands = 5;
-
-    // script is code to be executed by the program.
-    // Individual lines are joined with the new line character.
-    string script = 6;
-  }
-
-  // interactive, if true, uses a pseudo-tty to execute the program.
-  bool interactive = 7;
-}
-
 message ExecuteRequest {
-  ProgramConfig config = 1;
+  runme.runner.v2alpha1.ProgramConfig config = 1;
 
   // input_data is a byte array that will be send as input
   // to the program.
@@ -169,9 +124,6 @@ message ExecuteRequest {
   // store_last_output, if true, will store the stdout of
   // the last ran block in the environment variable `__`.
   bool store_last_output = 23;
-
-  // command_mode determines how the commands/script are executed.
-  CommandMode command_mode = 24;
 
   // language_id indicates a language to exeucute scripts/commands.
   string language_id = 25;

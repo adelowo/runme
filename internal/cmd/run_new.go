@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
+
 	"github.com/stateful/runme/internal/command"
+	"github.com/stateful/runme/internal/command/blockconfig"
 	"github.com/stateful/runme/internal/document"
 	"github.com/stateful/runme/internal/project"
-	"go.uber.org/zap"
 )
 
 // TODO(adamb): missing options:
@@ -60,14 +62,19 @@ func runNewCmd() *cobra.Command {
 }
 
 func runCommandNatively(cmd *cobra.Command, block *document.CodeBlock, logger *zap.Logger) error {
-	commandOpts := &command.NativeCommandOptions{
+	cfg, err := blockconfig.New(block)
+	if err != nil {
+		return err
+	}
+
+	opts := &command.NativeCommandOptions{
 		Stdin:  cmd.InOrStdin(),
 		Stdout: cmd.OutOrStdout(),
 		Stderr: cmd.ErrOrStderr(),
 		Logger: logger,
 	}
 
-	nativeCmd, err := command.NewNative(block, commandOpts)
+	nativeCmd, err := command.NewNative(cfg, opts)
 	if err != nil {
 		return err
 	}

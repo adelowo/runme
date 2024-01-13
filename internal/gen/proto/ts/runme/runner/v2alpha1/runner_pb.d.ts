@@ -5,6 +5,7 @@
 // @ts-nocheck
 import { MessageType } from "@protobuf-ts/runtime";
 import { UInt32Value } from "../../../google/protobuf/wrappers_pb";
+import { ProgramConfig } from "./config_pb";
 /**
  * @generated from protobuf message runme.runner.v2alpha1.Project
  */
@@ -155,85 +156,6 @@ export interface Winsize {
     y: number;
 }
 /**
- * @generated from protobuf message runme.runner.v2alpha1.CommandList
- */
-export interface CommandList {
-    /**
-     * commands are commands to be executed by the program.
-     * The commands are joined and executed as a script.
-     * For example: ["echo 'Hello, World'", "ls -l /etc"].
-     *
-     * @generated from protobuf field: repeated string commands = 1;
-     */
-    commands: string[];
-}
-/**
- * ProgramConfig is a configuration for a program to execute.
- * From this configuration, any program can be built.
- *
- * @generated from protobuf message runme.runner.v2alpha1.ProgramConfig
- */
-export interface ProgramConfig {
-    /**
-     * program_name is a name of the program to execute.
-     * If it's not a path (relative or absolute), the runner
-     * will try to resolve the name.
-     * For example: "sh", "/bin/bash".
-     *
-     * @generated from protobuf field: string program_name = 1;
-     */
-    programName: string;
-    /**
-     * arguments is a list of arguments passed to the program.
-     *
-     * @generated from protobuf field: repeated string arguments = 2;
-     */
-    arguments: string[];
-    /**
-     * directory to execute the program in.
-     *
-     * @generated from protobuf field: string directory = 3;
-     */
-    directory: string;
-    /**
-     * env is a list of additional environment variables
-     * that will be injected to the executed program.
-     *
-     * @generated from protobuf field: repeated string env = 4;
-     */
-    env: string[];
-    /**
-     * @generated from protobuf oneof: source
-     */
-    source: {
-        oneofKind: "commands";
-        /**
-         * commands are commands to be executed by the program.
-         * The commands are joined and executed as a script.
-         *
-         * @generated from protobuf field: runme.runner.v2alpha1.CommandList commands = 5;
-         */
-        commands: CommandList;
-    } | {
-        oneofKind: "script";
-        /**
-         * script is code to be executed by the program.
-         * Individual lines are joined with the new line character.
-         *
-         * @generated from protobuf field: string script = 6;
-         */
-        script: string;
-    } | {
-        oneofKind: undefined;
-    };
-    /**
-     * interactive, if true, uses a pseudo-tty to execute the program.
-     *
-     * @generated from protobuf field: bool interactive = 7;
-     */
-    interactive: boolean;
-}
-/**
  * @generated from protobuf message runme.runner.v2alpha1.ExecuteRequest
  */
 export interface ExecuteRequest {
@@ -295,12 +217,6 @@ export interface ExecuteRequest {
      * @generated from protobuf field: bool store_last_output = 23;
      */
     storeLastOutput: boolean;
-    /**
-     * command_mode determines how the commands/script are executed.
-     *
-     * @generated from protobuf field: runme.runner.v2alpha1.CommandMode command_mode = 24;
-     */
-    commandMode: CommandMode;
     /**
      * language_id indicates a language to exeucute scripts/commands.
      *
@@ -370,23 +286,6 @@ export declare enum ExecuteStop {
      * @generated from protobuf enum value: EXECUTE_STOP_KILL = 2;
      */
     KILL = 2
-}
-/**
- * @generated from protobuf enum runme.runner.v2alpha1.CommandMode
- */
-export declare enum CommandMode {
-    /**
-     * @generated from protobuf enum value: COMMAND_MODE_UNSPECIFIED = 0;
-     */
-    UNSPECIFIED = 0,
-    /**
-     * @generated from protobuf enum value: COMMAND_MODE_INLINE_SHELL = 1;
-     */
-    INLINE_SHELL = 1,
-    /**
-     * @generated from protobuf enum value: COMMAND_MODE_TEMP_FILE = 2;
-     */
-    TEMP_FILE = 2
 }
 /**
  * SessionStrategy determines a session selection in
@@ -487,20 +386,6 @@ declare class Winsize$Type extends MessageType<Winsize> {
  * @generated MessageType for protobuf message runme.runner.v2alpha1.Winsize
  */
 export declare const Winsize: Winsize$Type;
-declare class CommandList$Type extends MessageType<CommandList> {
-    constructor();
-}
-/**
- * @generated MessageType for protobuf message runme.runner.v2alpha1.CommandList
- */
-export declare const CommandList: CommandList$Type;
-declare class ProgramConfig$Type extends MessageType<ProgramConfig> {
-    constructor();
-}
-/**
- * @generated MessageType for protobuf message runme.runner.v2alpha1.ProgramConfig
- */
-export declare const ProgramConfig: ProgramConfig$Type;
 declare class ExecuteRequest$Type extends MessageType<ExecuteRequest> {
     constructor();
 }
