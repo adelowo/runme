@@ -3,17 +3,7 @@ package command
 import (
 	"path/filepath"
 	"strings"
-
-	"github.com/stateful/runme/internal/document"
 )
-
-func shellFromFrontmatter(block *document.CodeBlock) string {
-	fmtr, _ := block.Document().Frontmatter()
-	if fmtr != nil {
-		return fmtr.Shell
-	}
-	return ""
-}
 
 func isShellLanguage(languageID string) bool {
 	switch strings.ToLower(languageID) {
