@@ -5,7 +5,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/stateful/runme/internal/command"
-	"github.com/stateful/runme/internal/command/blockconfig"
 	"github.com/stateful/runme/internal/document"
 	"github.com/stateful/runme/internal/project"
 )
@@ -28,6 +27,19 @@ import (
 // - [ ] Run tasks in parallel using multi runner.
 
 func runNewCmd() *cobra.Command {
+	// var (
+	// 	dryRun                bool
+	// 	runAll                bool
+	// 	skipPrompts           bool
+	// 	skipPromptsExplicitly bool
+	// 	parallel              bool
+	// 	replaceScripts        []string
+	// 	serverAddr            string
+	// 	category              string
+	// 	getRunnerOpts         func() ([]client.RunnerOption, error)
+	// 	runIndex              int
+	// )
+
 	cmd := cobra.Command{
 		Use:   "run-new <commands>",
 		Short: "Run a selected command",
@@ -62,7 +74,7 @@ func runNewCmd() *cobra.Command {
 }
 
 func runCommandNatively(cmd *cobra.Command, block *document.CodeBlock, logger *zap.Logger) error {
-	cfg, err := blockconfig.New(block)
+	cfg, err := command.NewConfigFromCodeBlock(block)
 	if err != nil {
 		return err
 	}

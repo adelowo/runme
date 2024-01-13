@@ -42,7 +42,8 @@ message ProgramConfig {
   // interactive, if true, uses a pseudo-tty to execute the program.
   bool interactive = 7;
 
-  // TODO(adamb): understand motivation for this.
+  // TODO(adamb): understand motivation for this. In theory, source
+  // should tell whether to execute it inline or as a file.
   CommandMode mode = 8;
 
   message CommandList {

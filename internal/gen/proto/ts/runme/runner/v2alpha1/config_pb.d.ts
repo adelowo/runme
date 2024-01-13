@@ -70,7 +70,8 @@ export interface ProgramConfig {
      */
     interactive: boolean;
     /**
-     * TODO(adamb): understand motivation for this.
+     * TODO(adamb): understand motivation for this. In theory, source
+     * should tell whether to execute it inline or as a file.
      *
      * @generated from protobuf field: runme.runner.v2alpha1.CommandMode mode = 8;
      */

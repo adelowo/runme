@@ -95,7 +95,8 @@ type ProgramConfig struct {
 	Source isProgramConfig_Source `protobuf_oneof:"source"`
 	// interactive, if true, uses a pseudo-tty to execute the program.
 	Interactive bool `protobuf:"varint,7,opt,name=interactive,proto3" json:"interactive,omitempty"`
-	// TODO(adamb): understand motivation for this.
+	// TODO(adamb): understand motivation for this. In theory, source
+	// should tell whether to execute it inline or as a file.
 	Mode CommandMode `protobuf:"varint,8,opt,name=mode,proto3,enum=runme.runner.v2alpha1.CommandMode" json:"mode,omitempty"`
 }
 
