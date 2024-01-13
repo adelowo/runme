@@ -5,14 +5,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"syscall"
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 
 	"github.com/stateful/runme/internal/command"
-	"github.com/stateful/runme/internal/document"
 	"github.com/stateful/runme/internal/document/identity"
 	runnerv2alpha1 "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v2alpha1"
 	"github.com/stateful/runme/internal/project"
@@ -34,10 +32,9 @@ const (
 )
 
 type execution struct {
-	ID      string
-	Block   *document.CodeBlock
-	Project *project.Project
-	Req     *runnerv2alpha1.ExecuteRequest
+	ID           string
+	InitialInput []byte
+	Project      *project.Project
 
 	Cmd *command.VirtualCommand
 
@@ -48,13 +45,15 @@ type execution struct {
 	logger *zap.Logger
 }
 
-func newExecutionFrom(ctx context.Context, id string, req *runnerv2alpha1.ExecuteRequest, logger *zap.Logger) (*execution, error) {
-	proj, err := getProjectFromRequest(req, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	block, err := getCodeBlockFromRequest(ctx, req, proj)
+func newExecution(
+	ctx context.Context,
+	id string,
+	protoProgramConfig *runnerv2alpha1.ProgramConfig,
+	initialInputData []byte,
+	project *project.Project,
+	logger *zap.Logger,
+) (*execution, error) {
+	cfg, err := newConfigFromProtoProgramConfig(protoProgramConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -64,14 +63,14 @@ func newExecutionFrom(ctx context.Context, id string, req *runnerv2alpha1.Execut
 		stdinWriter io.WriteCloser
 	)
 
-	if req.Interactive {
+	if cfg.Interactive {
 		stdin, stdinWriter = io.Pipe()
 	}
 
 	stdout := rbuffer.NewRingBuffer(ringBufferSize)
 
-	cmd, err := command.NewVirtual(
-		block,
+	cmd, err := command.NewVirtualFromConfig(
+		cfg,
 		&command.VirtualCommandOptions{
 			Stdin:  stdin,
 			Stdout: stdout,
@@ -83,10 +82,9 @@ func newExecutionFrom(ctx context.Context, id string, req *runnerv2alpha1.Execut
 	}
 
 	exec := &execution{
-		ID:      id,
-		Block:   block,
-		Project: proj,
-		Req:     req,
+		ID:           id,
+		InitialInput: initialInputData,
+		Project:      project,
 
 		Cmd: cmd,
 
@@ -100,15 +98,19 @@ func newExecutionFrom(ctx context.Context, id string, req *runnerv2alpha1.Execut
 	return exec, nil
 }
 
+func (e *execution) Start(ctx context.Context) error {
+	return e.Cmd.Start(ctx)
+}
+
 func (e *execution) Wait(ctx context.Context, sender sender) (int, error) {
 	exitCode := -1
 
 	// Write initial input data.
-	if len(e.Req.InputData) > 0 {
+	if len(e.InitialInput) > 0 {
 		if e.stdinWriter == nil {
 			e.logger.Warn("input data provided but stdin is not available")
 		} else {
-			if _, err := e.stdinWriter.Write(e.Req.InputData); err != nil {
+			if _, err := e.stdinWriter.Write(e.InitialInput); err != nil {
 				return exitCode, errors.WithStack(err)
 			}
 		}
@@ -188,74 +190,52 @@ func readSendLoop(reader io.Reader, sender sender) error {
 	}
 }
 
-func getProjectFromRequest(req *runnerv2alpha1.ExecuteRequest, logger *zap.Logger) (*project.Project, error) {
-	var (
-		proj *project.Project
-		err  error
-	)
-
-	if req.Project != nil {
-		proj, err = getDirProjectFromRequest(req, logger)
-	} else if path := req.DocumentPath; path != "" {
-		proj, err = getFileProjectFromRequest(req, logger)
-	}
-
-	return proj, err
+type projectProvider interface {
+	GetProject() *runnerv2alpha1.Project
 }
 
-func getDirProjectFromRequest(req *runnerv2alpha1.ExecuteRequest, logger *zap.Logger) (*project.Project, error) {
+func getProjectFromProto(provider projectProvider, logger *zap.Logger) (*project.Project, error) {
+	if provider == nil {
+		return nil, nil
+	}
+
+	protoProj := provider.GetProject()
+
+	if protoProj == nil {
+		return nil, nil
+	}
+
 	idResolver := identity.NewResolver(identity.DefaultLifecycleIdentity)
 
 	opts := []project.ProjectOption{
 		project.WithIdentityResolver(idResolver),
 		project.WithFindRepoUpward(),
 		project.WithRespectGitignore(),
-		project.WithEnvFilesReadOrder(req.Project.EnvLoadOrder),
+		project.WithEnvFilesReadOrder(protoProj.EnvLoadOrder),
 		project.WithLogger(logger),
 	}
 
 	return project.NewDirProject(
-		req.Project.Root,
+		protoProj.Root,
 		opts...,
 	)
 }
 
-func getFileProjectFromRequest(req *runnerv2alpha1.ExecuteRequest, logger *zap.Logger) (*project.Project, error) {
-	idResolver := identity.NewResolver(identity.DefaultLifecycleIdentity)
+// func getFileProjectFromRequest(req *runnerv2alpha1.ExecuteRequest, logger *zap.Logger) (*project.Project, error) {
+// 	idResolver := identity.NewResolver(identity.DefaultLifecycleIdentity)
 
-	path := req.DocumentPath
+// 	path := req.DocumentPath
 
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(req.Directory, req.DocumentPath)
-	}
+// 	if !filepath.IsAbs(path) {
+// 		path = filepath.Join(req.Directory, req.DocumentPath)
+// 	}
 
-	return project.NewFileProject(
-		path,
-		project.WithIdentityResolver(idResolver),
-		project.WithLogger(logger),
-	)
-}
-
-func getCodeBlockFromRequest(ctx context.Context, req *runnerv2alpha1.ExecuteRequest, proj *project.Project) (*document.CodeBlock, error) {
-	tasks, err := project.LoadTasks(ctx, proj)
-	if err != nil {
-		return nil, err
-	}
-
-	tasks, err = project.FilterTasksByFileAndTaskName(tasks, req.DocumentPath, req.GetBlockName())
-	if err != nil {
-		return nil, err
-	}
-
-	switch len(tasks) {
-	case 0:
-		return nil, errors.New("no tasks found")
-	case 1:
-		return tasks[0].CodeBlock, nil
-	default:
-		return nil, errors.New("multiple tasks found")
-	}
-}
+// 	return project.NewFileProject(
+// 		path,
+// 		project.WithIdentityResolver(idResolver),
+// 		project.WithLogger(logger),
+// 	)
+// }
 
 func exitCodeFromErr(err error) int {
 	if err == nil {

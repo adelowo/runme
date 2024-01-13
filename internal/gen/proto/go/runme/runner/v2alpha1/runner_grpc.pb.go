@@ -4,7 +4,7 @@
 // - protoc             (unknown)
 // source: runme/runner/v2alpha1/runner.proto
 
-package runnerv2alpha1
+package runnerv1
 
 import (
 	context "context"
@@ -19,13 +19,21 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	RunnerService_Execute_FullMethodName = "/runme.runner.v2alpha1.RunnerService/Execute"
+	RunnerService_CreateSession_FullMethodName = "/runme.runner.v2alpha1.RunnerService/CreateSession"
+	RunnerService_GetSession_FullMethodName    = "/runme.runner.v2alpha1.RunnerService/GetSession"
+	RunnerService_ListSessions_FullMethodName  = "/runme.runner.v2alpha1.RunnerService/ListSessions"
+	RunnerService_DeleteSession_FullMethodName = "/runme.runner.v2alpha1.RunnerService/DeleteSession"
+	RunnerService_Execute_FullMethodName       = "/runme.runner.v2alpha1.RunnerService/Execute"
 )
 
 // RunnerServiceClient is the client API for RunnerService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RunnerServiceClient interface {
+	CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (*CreateSessionResponse, error)
+	GetSession(ctx context.Context, in *GetSessionRequest, opts ...grpc.CallOption) (*GetSessionResponse, error)
+	ListSessions(ctx context.Context, in *ListSessionsRequest, opts ...grpc.CallOption) (*ListSessionsResponse, error)
+	DeleteSession(ctx context.Context, in *DeleteSessionRequest, opts ...grpc.CallOption) (*DeleteSessionResponse, error)
 	// Execute executes a program. Examine "ExecuteRequest" to explore
 	// configuration options.
 	//
@@ -42,6 +50,42 @@ type runnerServiceClient struct {
 
 func NewRunnerServiceClient(cc grpc.ClientConnInterface) RunnerServiceClient {
 	return &runnerServiceClient{cc}
+}
+
+func (c *runnerServiceClient) CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (*CreateSessionResponse, error) {
+	out := new(CreateSessionResponse)
+	err := c.cc.Invoke(ctx, RunnerService_CreateSession_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runnerServiceClient) GetSession(ctx context.Context, in *GetSessionRequest, opts ...grpc.CallOption) (*GetSessionResponse, error) {
+	out := new(GetSessionResponse)
+	err := c.cc.Invoke(ctx, RunnerService_GetSession_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runnerServiceClient) ListSessions(ctx context.Context, in *ListSessionsRequest, opts ...grpc.CallOption) (*ListSessionsResponse, error) {
+	out := new(ListSessionsResponse)
+	err := c.cc.Invoke(ctx, RunnerService_ListSessions_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runnerServiceClient) DeleteSession(ctx context.Context, in *DeleteSessionRequest, opts ...grpc.CallOption) (*DeleteSessionResponse, error) {
+	out := new(DeleteSessionResponse)
+	err := c.cc.Invoke(ctx, RunnerService_DeleteSession_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *runnerServiceClient) Execute(ctx context.Context, opts ...grpc.CallOption) (RunnerService_ExecuteClient, error) {
@@ -79,6 +123,10 @@ func (x *runnerServiceExecuteClient) Recv() (*ExecuteResponse, error) {
 // All implementations must embed UnimplementedRunnerServiceServer
 // for forward compatibility
 type RunnerServiceServer interface {
+	CreateSession(context.Context, *CreateSessionRequest) (*CreateSessionResponse, error)
+	GetSession(context.Context, *GetSessionRequest) (*GetSessionResponse, error)
+	ListSessions(context.Context, *ListSessionsRequest) (*ListSessionsResponse, error)
+	DeleteSession(context.Context, *DeleteSessionRequest) (*DeleteSessionResponse, error)
 	// Execute executes a program. Examine "ExecuteRequest" to explore
 	// configuration options.
 	//
@@ -94,6 +142,18 @@ type RunnerServiceServer interface {
 type UnimplementedRunnerServiceServer struct {
 }
 
+func (UnimplementedRunnerServiceServer) CreateSession(context.Context, *CreateSessionRequest) (*CreateSessionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateSession not implemented")
+}
+func (UnimplementedRunnerServiceServer) GetSession(context.Context, *GetSessionRequest) (*GetSessionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSession not implemented")
+}
+func (UnimplementedRunnerServiceServer) ListSessions(context.Context, *ListSessionsRequest) (*ListSessionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListSessions not implemented")
+}
+func (UnimplementedRunnerServiceServer) DeleteSession(context.Context, *DeleteSessionRequest) (*DeleteSessionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteSession not implemented")
+}
 func (UnimplementedRunnerServiceServer) Execute(RunnerService_ExecuteServer) error {
 	return status.Errorf(codes.Unimplemented, "method Execute not implemented")
 }
@@ -108,6 +168,78 @@ type UnsafeRunnerServiceServer interface {
 
 func RegisterRunnerServiceServer(s grpc.ServiceRegistrar, srv RunnerServiceServer) {
 	s.RegisterService(&RunnerService_ServiceDesc, srv)
+}
+
+func _RunnerService_CreateSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RunnerServiceServer).CreateSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RunnerService_CreateSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RunnerServiceServer).CreateSession(ctx, req.(*CreateSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RunnerService_GetSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RunnerServiceServer).GetSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RunnerService_GetSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RunnerServiceServer).GetSession(ctx, req.(*GetSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RunnerService_ListSessions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSessionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RunnerServiceServer).ListSessions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RunnerService_ListSessions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RunnerServiceServer).ListSessions(ctx, req.(*ListSessionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RunnerService_DeleteSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RunnerServiceServer).DeleteSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RunnerService_DeleteSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RunnerServiceServer).DeleteSession(ctx, req.(*DeleteSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _RunnerService_Execute_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -142,7 +274,24 @@ func (x *runnerServiceExecuteServer) Recv() (*ExecuteRequest, error) {
 var RunnerService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "runme.runner.v2alpha1.RunnerService",
 	HandlerType: (*RunnerServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "CreateSession",
+			Handler:    _RunnerService_CreateSession_Handler,
+		},
+		{
+			MethodName: "GetSession",
+			Handler:    _RunnerService_GetSession_Handler,
+		},
+		{
+			MethodName: "ListSessions",
+			Handler:    _RunnerService_ListSessions_Handler,
+		},
+		{
+			MethodName: "DeleteSession",
+			Handler:    _RunnerService_DeleteSession_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Execute",

@@ -8,11 +8,36 @@ import type { ServiceInfo } from "@protobuf-ts/runtime-rpc";
 import type { ExecuteResponse } from "./runner_pb";
 import type { ExecuteRequest } from "./runner_pb";
 import type { DuplexStreamingCall } from "@protobuf-ts/runtime-rpc";
+import type { DeleteSessionResponse } from "./runner_pb";
+import type { DeleteSessionRequest } from "./runner_pb";
+import type { ListSessionsResponse } from "./runner_pb";
+import type { ListSessionsRequest } from "./runner_pb";
+import type { GetSessionResponse } from "./runner_pb";
+import type { GetSessionRequest } from "./runner_pb";
+import type { CreateSessionResponse } from "./runner_pb";
+import type { CreateSessionRequest } from "./runner_pb";
+import type { UnaryCall } from "@protobuf-ts/runtime-rpc";
 import type { RpcOptions } from "@protobuf-ts/runtime-rpc";
 /**
  * @generated from protobuf service runme.runner.v2alpha1.RunnerService
  */
 export interface IRunnerServiceClient {
+    /**
+     * @generated from protobuf rpc: CreateSession(runme.runner.v2alpha1.CreateSessionRequest) returns (runme.runner.v2alpha1.CreateSessionResponse);
+     */
+    createSession(input: CreateSessionRequest, options?: RpcOptions): UnaryCall<CreateSessionRequest, CreateSessionResponse>;
+    /**
+     * @generated from protobuf rpc: GetSession(runme.runner.v2alpha1.GetSessionRequest) returns (runme.runner.v2alpha1.GetSessionResponse);
+     */
+    getSession(input: GetSessionRequest, options?: RpcOptions): UnaryCall<GetSessionRequest, GetSessionResponse>;
+    /**
+     * @generated from protobuf rpc: ListSessions(runme.runner.v2alpha1.ListSessionsRequest) returns (runme.runner.v2alpha1.ListSessionsResponse);
+     */
+    listSessions(input: ListSessionsRequest, options?: RpcOptions): UnaryCall<ListSessionsRequest, ListSessionsResponse>;
+    /**
+     * @generated from protobuf rpc: DeleteSession(runme.runner.v2alpha1.DeleteSessionRequest) returns (runme.runner.v2alpha1.DeleteSessionResponse);
+     */
+    deleteSession(input: DeleteSessionRequest, options?: RpcOptions): UnaryCall<DeleteSessionRequest, DeleteSessionResponse>;
     /**
      * Execute executes a program. Examine "ExecuteRequest" to explore
      * configuration options.
@@ -35,6 +60,22 @@ export declare class RunnerServiceClient implements IRunnerServiceClient, Servic
     methods: any;
     options: any;
     constructor(_transport: RpcTransport);
+    /**
+     * @generated from protobuf rpc: CreateSession(runme.runner.v2alpha1.CreateSessionRequest) returns (runme.runner.v2alpha1.CreateSessionResponse);
+     */
+    createSession(input: CreateSessionRequest, options?: RpcOptions): UnaryCall<CreateSessionRequest, CreateSessionResponse>;
+    /**
+     * @generated from protobuf rpc: GetSession(runme.runner.v2alpha1.GetSessionRequest) returns (runme.runner.v2alpha1.GetSessionResponse);
+     */
+    getSession(input: GetSessionRequest, options?: RpcOptions): UnaryCall<GetSessionRequest, GetSessionResponse>;
+    /**
+     * @generated from protobuf rpc: ListSessions(runme.runner.v2alpha1.ListSessionsRequest) returns (runme.runner.v2alpha1.ListSessionsResponse);
+     */
+    listSessions(input: ListSessionsRequest, options?: RpcOptions): UnaryCall<ListSessionsRequest, ListSessionsResponse>;
+    /**
+     * @generated from protobuf rpc: DeleteSession(runme.runner.v2alpha1.DeleteSessionRequest) returns (runme.runner.v2alpha1.DeleteSessionResponse);
+     */
+    deleteSession(input: DeleteSessionRequest, options?: RpcOptions): UnaryCall<DeleteSessionRequest, DeleteSessionResponse>;
     /**
      * Execute executes a program. Examine "ExecuteRequest" to explore
      * configuration options.

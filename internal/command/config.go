@@ -27,10 +27,12 @@ type Config struct {
 	Interactive bool
 
 	// TempDir is a temporary directory.
+	// TODO(adamb): hide it and expose getter.
 	TempDir string
 
 	// ScriptPath is a path to a script file.
 	// It is also the last argument in Args.
+	// TODO(adamb): hide it and expose getter.
 	ScriptPath string
 }
 
@@ -125,7 +127,7 @@ func (b *inlineShellConfigBuilder) Build() (*Config, error) {
 
 	cfg.Interactive = b.block.Interactive()
 
-	if script := prepareScript(b.block, cfg.ProgramPath); script != "" {
+	if script := prepareScriptFromLines(cfg.ProgramPath, b.block.Lines()); script != "" {
 		cfg.Args = append(cfg.Args, "-c", script)
 	}
 

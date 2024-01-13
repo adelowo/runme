@@ -29,6 +29,47 @@ export var ExecuteStop;
      */
     ExecuteStop[ExecuteStop["KILL"] = 2] = "KILL";
 })(ExecuteStop || (ExecuteStop = {}));
+/**
+ * @generated from protobuf enum runme.runner.v2alpha1.CommandMode
+ */
+export var CommandMode;
+(function (CommandMode) {
+    /**
+     * @generated from protobuf enum value: COMMAND_MODE_UNSPECIFIED = 0;
+     */
+    CommandMode[CommandMode["UNSPECIFIED"] = 0] = "UNSPECIFIED";
+    /**
+     * @generated from protobuf enum value: COMMAND_MODE_INLINE_SHELL = 1;
+     */
+    CommandMode[CommandMode["INLINE_SHELL"] = 1] = "INLINE_SHELL";
+    /**
+     * @generated from protobuf enum value: COMMAND_MODE_TEMP_FILE = 2;
+     */
+    CommandMode[CommandMode["TEMP_FILE"] = 2] = "TEMP_FILE";
+})(CommandMode || (CommandMode = {}));
+/**
+ * SessionStrategy determines a session selection in
+ * an initial execute request.
+ *
+ * @generated from protobuf enum runme.runner.v2alpha1.SessionStrategy
+ */
+export var SessionStrategy;
+(function (SessionStrategy) {
+    /**
+     * Uses the session_id field to determine the session.
+     * If none is present, a new session is created.
+     *
+     * @generated from protobuf enum value: SESSION_STRATEGY_UNSPECIFIED = 0;
+     */
+    SessionStrategy[SessionStrategy["UNSPECIFIED"] = 0] = "UNSPECIFIED";
+    /**
+     * Uses the most recent session on the server.
+     * If there is none, a new one is created.
+     *
+     * @generated from protobuf enum value: SESSION_STRATEGY_MOST_RECENT = 1;
+     */
+    SessionStrategy[SessionStrategy["MOST_RECENT"] = 1] = "MOST_RECENT";
+})(SessionStrategy || (SessionStrategy = {}));
 // @generated message type with reflection information, may provide speed optimized methods
 class Project$Type extends MessageType {
     constructor() {
@@ -42,6 +83,114 @@ class Project$Type extends MessageType {
  * @generated MessageType for protobuf message runme.runner.v2alpha1.Project
  */
 export const Project = new Project$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class Session$Type extends MessageType {
+    constructor() {
+        super("runme.runner.v2alpha1.Session", [
+            { no: 1, name: "id", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
+            { no: 2, name: "env", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ },
+            { no: 3, name: "metadata", kind: "map", K: 9 /*ScalarType.STRING*/, V: { kind: "scalar", T: 9 /*ScalarType.STRING*/ } }
+        ]);
+    }
+}
+/**
+ * @generated MessageType for protobuf message runme.runner.v2alpha1.Session
+ */
+export const Session = new Session$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class CreateSessionRequest$Type extends MessageType {
+    constructor() {
+        super("runme.runner.v2alpha1.CreateSessionRequest", [
+            { no: 1, name: "metadata", kind: "map", K: 9 /*ScalarType.STRING*/, V: { kind: "scalar", T: 9 /*ScalarType.STRING*/ } },
+            { no: 2, name: "env", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ },
+            { no: 3, name: "project", kind: "message", T: () => Project }
+        ]);
+    }
+}
+/**
+ * @generated MessageType for protobuf message runme.runner.v2alpha1.CreateSessionRequest
+ */
+export const CreateSessionRequest = new CreateSessionRequest$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class CreateSessionResponse$Type extends MessageType {
+    constructor() {
+        super("runme.runner.v2alpha1.CreateSessionResponse", [
+            { no: 1, name: "session", kind: "message", T: () => Session }
+        ]);
+    }
+}
+/**
+ * @generated MessageType for protobuf message runme.runner.v2alpha1.CreateSessionResponse
+ */
+export const CreateSessionResponse = new CreateSessionResponse$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class GetSessionRequest$Type extends MessageType {
+    constructor() {
+        super("runme.runner.v2alpha1.GetSessionRequest", [
+            { no: 1, name: "id", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
+        ]);
+    }
+}
+/**
+ * @generated MessageType for protobuf message runme.runner.v2alpha1.GetSessionRequest
+ */
+export const GetSessionRequest = new GetSessionRequest$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class GetSessionResponse$Type extends MessageType {
+    constructor() {
+        super("runme.runner.v2alpha1.GetSessionResponse", [
+            { no: 1, name: "session", kind: "message", T: () => Session }
+        ]);
+    }
+}
+/**
+ * @generated MessageType for protobuf message runme.runner.v2alpha1.GetSessionResponse
+ */
+export const GetSessionResponse = new GetSessionResponse$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class ListSessionsRequest$Type extends MessageType {
+    constructor() {
+        super("runme.runner.v2alpha1.ListSessionsRequest", []);
+    }
+}
+/**
+ * @generated MessageType for protobuf message runme.runner.v2alpha1.ListSessionsRequest
+ */
+export const ListSessionsRequest = new ListSessionsRequest$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class ListSessionsResponse$Type extends MessageType {
+    constructor() {
+        super("runme.runner.v2alpha1.ListSessionsResponse", [
+            { no: 1, name: "sessions", kind: "message", repeat: 1 /*RepeatType.PACKED*/, T: () => Session }
+        ]);
+    }
+}
+/**
+ * @generated MessageType for protobuf message runme.runner.v2alpha1.ListSessionsResponse
+ */
+export const ListSessionsResponse = new ListSessionsResponse$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class DeleteSessionRequest$Type extends MessageType {
+    constructor() {
+        super("runme.runner.v2alpha1.DeleteSessionRequest", [
+            { no: 1, name: "id", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
+        ]);
+    }
+}
+/**
+ * @generated MessageType for protobuf message runme.runner.v2alpha1.DeleteSessionRequest
+ */
+export const DeleteSessionRequest = new DeleteSessionRequest$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class DeleteSessionResponse$Type extends MessageType {
+    constructor() {
+        super("runme.runner.v2alpha1.DeleteSessionResponse", []);
+    }
+}
+/**
+ * @generated MessageType for protobuf message runme.runner.v2alpha1.DeleteSessionResponse
+ */
+export const DeleteSessionResponse = new DeleteSessionResponse$Type();
 // @generated message type with reflection information, may provide speed optimized methods
 class Winsize$Type extends MessageType {
     constructor() {
@@ -58,19 +207,51 @@ class Winsize$Type extends MessageType {
  */
 export const Winsize = new Winsize$Type();
 // @generated message type with reflection information, may provide speed optimized methods
+class CommandList$Type extends MessageType {
+    constructor() {
+        super("runme.runner.v2alpha1.CommandList", [
+            { no: 1, name: "commands", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ }
+        ]);
+    }
+}
+/**
+ * @generated MessageType for protobuf message runme.runner.v2alpha1.CommandList
+ */
+export const CommandList = new CommandList$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class ProgramConfig$Type extends MessageType {
+    constructor() {
+        super("runme.runner.v2alpha1.ProgramConfig", [
+            { no: 1, name: "program_name", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
+            { no: 2, name: "arguments", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ },
+            { no: 3, name: "directory", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
+            { no: 4, name: "env", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ },
+            { no: 5, name: "commands", kind: "message", oneof: "source", T: () => CommandList },
+            { no: 6, name: "script", kind: "scalar", oneof: "source", T: 9 /*ScalarType.STRING*/ },
+            { no: 7, name: "interactive", kind: "scalar", T: 8 /*ScalarType.BOOL*/ }
+        ]);
+    }
+}
+/**
+ * @generated MessageType for protobuf message runme.runner.v2alpha1.ProgramConfig
+ */
+export const ProgramConfig = new ProgramConfig$Type();
+// @generated message type with reflection information, may provide speed optimized methods
 class ExecuteRequest$Type extends MessageType {
     constructor() {
         super("runme.runner.v2alpha1.ExecuteRequest", [
-            { no: 1, name: "document_path", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
-            { no: 2, name: "project", kind: "message", T: () => Project },
-            { no: 8, name: "block_id", kind: "scalar", oneof: "block", T: 9 /*ScalarType.STRING*/ },
-            { no: 9, name: "block_name", kind: "scalar", oneof: "block", T: 9 /*ScalarType.STRING*/ },
-            { no: 3, name: "directory", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
-            { no: 4, name: "env", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ },
-            { no: 5, name: "input_data", kind: "scalar", T: 12 /*ScalarType.BYTES*/ },
-            { no: 6, name: "stop", kind: "enum", T: () => ["runme.runner.v2alpha1.ExecuteStop", ExecuteStop, "EXECUTE_STOP_"] },
-            { no: 7, name: "winsize", kind: "message", T: () => Winsize },
-            { no: 10, name: "interactive", kind: "scalar", T: 8 /*ScalarType.BOOL*/ }
+            { no: 1, name: "config", kind: "message", T: () => ProgramConfig },
+            { no: 8, name: "input_data", kind: "scalar", T: 12 /*ScalarType.BYTES*/ },
+            { no: 9, name: "stop", kind: "enum", T: () => ["runme.runner.v2alpha1.ExecuteStop", ExecuteStop, "EXECUTE_STOP_"] },
+            { no: 10, name: "winsize", kind: "message", T: () => Winsize },
+            { no: 11, name: "background", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
+            { no: 20, name: "session_id", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
+            { no: 21, name: "session_strategy", kind: "enum", T: () => ["runme.runner.v2alpha1.SessionStrategy", SessionStrategy, "SESSION_STRATEGY_"] },
+            { no: 22, name: "project", kind: "message", T: () => Project },
+            { no: 23, name: "store_last_output", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
+            { no: 24, name: "command_mode", kind: "enum", T: () => ["runme.runner.v2alpha1.CommandMode", CommandMode, "COMMAND_MODE_"] },
+            { no: 25, name: "language_id", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
+            { no: 26, name: "file_extension", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
         ]);
     }
 }
@@ -109,5 +290,9 @@ export const ExecuteResponse = new ExecuteResponse$Type();
  * @generated ServiceType for protobuf service runme.runner.v2alpha1.RunnerService
  */
 export const RunnerService = new ServiceType("runme.runner.v2alpha1.RunnerService", [
+    { name: "CreateSession", options: {}, I: CreateSessionRequest, O: CreateSessionResponse },
+    { name: "GetSession", options: {}, I: GetSessionRequest, O: GetSessionResponse },
+    { name: "ListSessions", options: {}, I: ListSessionsRequest, O: ListSessionsResponse },
+    { name: "DeleteSession", options: {}, I: DeleteSessionRequest, O: DeleteSessionResponse },
     { name: "Execute", serverStreaming: true, clientStreaming: true, options: {}, I: ExecuteRequest, O: ExecuteResponse }
 ]);

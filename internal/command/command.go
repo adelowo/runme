@@ -38,6 +38,18 @@ func NewNative(
 	return newNativeCommand(cfg, options), nil
 }
 
+func NewNativeFromConfig(cfg *Config, options *NativeCommandOptions) (*NativeCommand, error) {
+	if options == nil {
+		options = &NativeCommandOptions{}
+	}
+
+	if options.Logger == nil {
+		options.Logger = zap.NewNop()
+	}
+
+	return newNativeCommand(cfg, options), nil
+}
+
 type VirtualCommandOptions struct {
 	Env []string
 
@@ -62,6 +74,18 @@ func NewVirtual(
 	cfg, err := NewConfigBuilder(block).Build()
 	if err != nil {
 		return nil, err
+	}
+
+	return newVirtualCommand(cfg, options), nil
+}
+
+func NewVirtualFromConfig(cfg *Config, options *VirtualCommandOptions) (*VirtualCommand, error) {
+	if options == nil {
+		options = &VirtualCommandOptions{}
+	}
+
+	if options.Logger == nil {
+		options.Logger = zap.NewNop()
 	}
 
 	return newVirtualCommand(cfg, options), nil

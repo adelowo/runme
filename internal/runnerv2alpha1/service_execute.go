@@ -34,14 +34,19 @@ func (r *runnerService) Execute(srv runnerv2alpha1.RunnerService_ExecuteServer) 
 
 	ctx := srv.Context()
 
+	proj, err := getProjectFromProto(req, logger)
+	if err != nil {
+		return err
+	}
+
 	// Create the execution.
-	exec, err := newExecutionFrom(ctx, id, req, logger)
+	exec, err := newExecution(ctx, id, req.Config, req.InputData, proj, logger)
 	if err != nil {
 		return err
 	}
 
 	// Start the command and send the initial response with PID.
-	if err := exec.Cmd.Start(ctx); err != nil {
+	if err := exec.Start(ctx); err != nil {
 		return err
 	}
 	if err := srv.Send(&runnerv2alpha1.ExecuteResponse{
@@ -60,7 +65,10 @@ func (r *runnerService) Execute(srv runnerv2alpha1.RunnerService_ExecuteServer) 
 			case err == nil:
 				// continue
 			case err == io.EOF:
-				logger.Info("client closed the send direction; ignoring")
+				logger.Info("client closed its send direction; stopping the program")
+				if err := exec.Cmd.StopWithSignal(os.Interrupt); err != nil {
+					logger.Info("failed to stop the command with signal", zap.Error(err))
+				}
 				return
 			case status.Convert(err).Code() == codes.Canceled || status.Convert(err).Code() == codes.DeadlineExceeded:
 				if !exec.Cmd.IsRunning() {

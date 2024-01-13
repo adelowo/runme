@@ -4,27 +4,68 @@ package runme.runner.v2alpha1;
 
 import "google/protobuf/wrappers.proto";
 
-option go_package = "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v2alpha1;runnerv2alpha1";
+option go_package = "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v1;runnerv1";
 
 message Project {
-  // project root folder
+  // root is a root directory of the project.
+  // The semantic is the same as for the "--project"
+  // flag in "runme".
   string root = 1;
 
-  // list of environment files to try and load
-  // start with
+  // env_load_order is list of environment files
+  // to try and load env from.
   repeated string env_load_order = 2;
 }
 
-message Winsize {
-  // number of rows (in cells)
-  uint32 rows = 1;
-  // number of columns (in cells)
-  uint32 cols = 2;
-  // width in pixels
-  uint32 x = 3;
-  // height in pixels
-  uint32 y = 4;
+message Session {
+  string id = 1;
+
+  // env keeps track of session environment variables.
+  // They can be modified by executing programs which
+  // alter them through "export" and "unset" commands.
+  repeated string env = 2;
+
+  // metadata is a map of client specific metadata.
+  map<string, string> metadata = 3;
 }
+
+message CreateSessionRequest {
+  // metadata is a map of client specific metadata.
+  map<string, string> metadata = 1;
+
+  // env field provides an initial set of environment variables
+  // for a newly created session.
+  repeated string env = 2;
+
+  // project from which to load environment variables.
+  // They will be appended to the list from the env field.
+  // The env field has a higher priority.
+  optional Project project = 3;
+}
+
+message CreateSessionResponse {
+  Session session = 1;
+}
+
+message GetSessionRequest {
+  string id = 1;
+}
+
+message GetSessionResponse {
+  Session session = 1;
+}
+
+message ListSessionsRequest {}
+
+message ListSessionsResponse {
+  repeated Session sessions = 1;
+}
+
+message DeleteSessionRequest {
+  string id = 1;
+}
+
+message DeleteSessionResponse {}
 
 enum ExecuteStop {
   EXECUTE_STOP_UNSPECIFIED = 0;
@@ -32,50 +73,111 @@ enum ExecuteStop {
   EXECUTE_STOP_KILL = 2;
 }
 
-message ExecuteRequest {
-  // document_path is a path to the document which contains
-  // the cell to execute.
-  //
-  // If project is set, document_path should be relative to the project root.
-  // Otherwise, it should be an absolute path.
+enum CommandMode {
+  COMMAND_MODE_UNSPECIFIED = 0;
+  COMMAND_MODE_INLINE_SHELL = 1;
+  COMMAND_MODE_TEMP_FILE = 2;
+}
 
-  // If it's a relative path and project is not set, directory is used as a base.
-  string document_path = 1;
+// SessionStrategy determines a session selection in
+// an initial execute request.
+enum SessionStrategy {
+  // Uses the session_id field to determine the session.
+  // If none is present, a new session is created.
+  SESSION_STRATEGY_UNSPECIFIED = 0;
+  // Uses the most recent session on the server.
+  // If there is none, a new one is created.
+  SESSION_STRATEGY_MOST_RECENT = 1;
+}
 
-  // project represents a project in which the document is located.
-  optional Project project = 2;
+message Winsize {
+  uint32 rows = 1;
+  uint32 cols = 2;
+  uint32 x = 3;
+  uint32 y = 4;
+}
 
-  // block is either an ID or a name of the block to execute from the document.
-  oneof block {
-    string block_id = 8;
-    string block_name = 9;
-  }
+message CommandList {
+  // commands are commands to be executed by the program.
+  // The commands are joined and executed as a script.
+  // For example: ["echo 'Hello, World'", "ls -l /etc"].
+  repeated string commands = 1;
+}
 
-  // directory to execute the program in. If not set,
-  // the current working directory is used.
+// ProgramConfig is a configuration for a program to execute.
+// From this configuration, any program can be built.
+message ProgramConfig {
+  // program_name is a name of the program to execute.
+  // If it's not a path (relative or absolute), the runner
+  // will try to resolve the name.
+  // For example: "sh", "/bin/bash".
+  string program_name = 1;
+
+  // arguments is a list of arguments passed to the program.
+  repeated string arguments = 2;
+
+  // directory to execute the program in.
   string directory = 3;
 
   // env is a list of additional environment variables
   // that will be injected to the executed program.
-  // They will override any env from the project.
   repeated string env = 4;
+
+  oneof source {
+    // commands are commands to be executed by the program.
+    // The commands are joined and executed as a script.
+    CommandList commands = 5;
+
+    // script is code to be executed by the program.
+    // Individual lines are joined with the new line character.
+    string script = 6;
+  }
+
+  // interactive, if true, uses a pseudo-tty to execute the program.
+  bool interactive = 7;
+}
+
+message ExecuteRequest {
+  ProgramConfig config = 1;
 
   // input_data is a byte array that will be send as input
   // to the program.
-  bytes input_data = 5;
+  bytes input_data = 8;
 
   // stop requests the running process to be stopped.
   // It is allowed only in the consecutive calls.
-  ExecuteStop stop = 6;
+  ExecuteStop stop = 9;
 
   // sets pty winsize
   // has no effect in non-interactive mode
-  optional Winsize winsize = 7;
+  optional Winsize winsize = 10;
 
-  // interactive, if true, will allow to process input_data.
-  // When no more data is expected, EOT (0x04) character
-  // must be sent in input_data.
-  bool interactive = 10;
+  // background, if true, will send process' PID as a first response.
+  bool background = 11;
+
+  // session_id indicates in which Session the program should execute.
+  // Executing in a Session might provide additional context like
+  // environment variables.
+  string session_id = 20;
+
+  // session_strategy is a strategy for selecting the session.
+  SessionStrategy session_strategy = 21;
+
+  // project used to load environment variables from .env files.
+  optional Project project = 22;
+
+  // store_last_output, if true, will store the stdout of
+  // the last ran block in the environment variable `__`.
+  bool store_last_output = 23;
+
+  // command_mode determines how the commands/script are executed.
+  CommandMode command_mode = 24;
+
+  // language_id indicates a language to exeucute scripts/commands.
+  string language_id = 25;
+
+  // file_extension is associated with the script.
+  string file_extension = 26;
 }
 
 message ProcessPID {
@@ -92,12 +194,18 @@ message ExecuteResponse {
   // stderr_data contains bytes from stderr since the last response.
   bytes stderr_data = 3;
 
-  // pid contains the process' PID
-  // this is only sent once in an initial response for background processes.
+  // pid contains the process' PID.
+  // This is only sent once in an initial response
+  // for background processes.
   ProcessPID pid = 4;
 }
 
 service RunnerService {
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse) {}
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse) {}
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse) {}
+  rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse) {}
+
   // Execute executes a program. Examine "ExecuteRequest" to explore
   // configuration options.
   //

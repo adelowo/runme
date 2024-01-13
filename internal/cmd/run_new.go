@@ -67,15 +67,15 @@ func runCommandNatively(cmd *cobra.Command, block *document.CodeBlock, logger *z
 		Logger: logger,
 	}
 
-	localCmd, err := command.NewNative(block, commandOpts)
+	nativeCmd, err := command.NewNative(block, commandOpts)
 	if err != nil {
 		return err
 	}
 
-	err = localCmd.Start(cmd.Context())
+	err = nativeCmd.Start(cmd.Context())
 	if err != nil {
 		return err
 	}
 
-	return localCmd.Wait()
+	return nativeCmd.Wait()
 }

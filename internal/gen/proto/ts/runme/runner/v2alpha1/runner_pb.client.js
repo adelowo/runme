@@ -16,6 +16,34 @@ export class RunnerServiceClient {
         this.options = RunnerService.options;
     }
     /**
+     * @generated from protobuf rpc: CreateSession(runme.runner.v2alpha1.CreateSessionRequest) returns (runme.runner.v2alpha1.CreateSessionResponse);
+     */
+    createSession(input, options) {
+        const method = this.methods[0], opt = this._transport.mergeOptions(options);
+        return stackIntercept("unary", this._transport, method, opt, input);
+    }
+    /**
+     * @generated from protobuf rpc: GetSession(runme.runner.v2alpha1.GetSessionRequest) returns (runme.runner.v2alpha1.GetSessionResponse);
+     */
+    getSession(input, options) {
+        const method = this.methods[1], opt = this._transport.mergeOptions(options);
+        return stackIntercept("unary", this._transport, method, opt, input);
+    }
+    /**
+     * @generated from protobuf rpc: ListSessions(runme.runner.v2alpha1.ListSessionsRequest) returns (runme.runner.v2alpha1.ListSessionsResponse);
+     */
+    listSessions(input, options) {
+        const method = this.methods[2], opt = this._transport.mergeOptions(options);
+        return stackIntercept("unary", this._transport, method, opt, input);
+    }
+    /**
+     * @generated from protobuf rpc: DeleteSession(runme.runner.v2alpha1.DeleteSessionRequest) returns (runme.runner.v2alpha1.DeleteSessionResponse);
+     */
+    deleteSession(input, options) {
+        const method = this.methods[3], opt = this._transport.mergeOptions(options);
+        return stackIntercept("unary", this._transport, method, opt, input);
+    }
+    /**
      * Execute executes a program. Examine "ExecuteRequest" to explore
      * configuration options.
      *
@@ -27,7 +55,7 @@ export class RunnerServiceClient {
      * @generated from protobuf rpc: Execute(stream runme.runner.v2alpha1.ExecuteRequest) returns (stream runme.runner.v2alpha1.ExecuteResponse);
      */
     execute(options) {
-        const method = this.methods[0], opt = this._transport.mergeOptions(options);
+        const method = this.methods[4], opt = this._transport.mergeOptions(options);
         return stackIntercept("duplex", this._transport, method, opt);
     }
 }

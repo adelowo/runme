@@ -1,47 +1,49 @@
-package command
+package runnerv2alpha1
 
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/stateful/runme/internal/command"
+	runnerv2alpha1 "github.com/stateful/runme/internal/gen/proto/go/runme/runner/v2alpha1"
 )
 
-func isShellLanguage(languageID string) bool {
-	switch strings.ToLower(languageID) {
-	// shellscripts
-	// TODO(adamb): breaking change: shellscript was removed to indicate
-	// that it should be executed as a file. Consider adding it back and
-	// using attributes to decide how a code block should be executed.
-	case "sh", "bash", "zsh", "ksh", "shell":
-		return true
-
-	// dos
-	case "bat", "cmd":
-		return true
-
-	// powershell
-	case "powershell", "pwsh":
-		return true
-
-	// fish
-	case "fish":
-		return true
-
-	default:
-		return false
-	}
+func newConfigFromProtoProgramConfig(cfg *runnerv2alpha1.ProgramConfig) (*command.Config, error) {
+	return (&configBuilder{cfg: cfg}).Build()
 }
 
-func prepareScriptFromLines(programPath string, lines []string) string {
+type configBuilder struct {
+	cfg *runnerv2alpha1.ProgramConfig
+}
+
+func (b *configBuilder) script(programPath string) string {
 	var buf strings.Builder
 
 	_, _ = buf.WriteString(shellOptionsFromProgram(programPath) + ";")
 
-	for _, cmd := range lines {
+	for _, cmd := range b.cfg.GetCommands().Commands {
 		_, _ = buf.WriteString(cmd)
 		_, _ = buf.WriteRune('\n')
 	}
 
 	return buf.String()
+
+}
+
+func (b *configBuilder) Build() (*command.Config, error) {
+	cfg := &command.Config{
+		ProgramPath: b.cfg.ProgramName,
+	}
+
+	// Using "-i" options seems to be not needed.
+
+	cfg.Interactive = b.cfg.Interactive
+
+	if script := b.script(b.cfg.ProgramName); script != "" {
+		cfg.Args = append(cfg.Args, "-c", script)
+	}
+
+	return cfg, nil
 }
 
 func shellOptionsFromProgram(programPath string) (res string) {
